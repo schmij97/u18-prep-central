@@ -1,0 +1,65 @@
+name: Update site
+
+on:
+  schedule:
+    - cron: "5 * * * *"   # every hour at :05 (UTC); update.py decides if it's due (Mountain time)
+  workflow_dispatch:       # "Run workflow" button for a manual update
+    inputs:
+      all:
+        description: "Also refresh rosters and game logs now"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # save the downloaded data back to the repo
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      TZ: America/Edmonton
+    outputs:
+      ran: ${{ steps.run.outputs.ran }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch data and build
+        id: run
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python update.py ${{ inputs.all && '--all' || '' }}
+            echo "ran=true" >> "$GITHUB_OUTPUT"
+          else
+            python update.py --scheduled
+          fi
+      - name: Save data to the repo
+        if: steps.run.outputs.ran == 'true'
+        run: |
+          git config user.name "site-updater"
+          git config user.email "site-updater@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Data update $(date '+%Y-%m-%d %H:%M %Z')"
+          git push
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.run.outputs.ran == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: update
+    if: needs.update.outputs.ran == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
