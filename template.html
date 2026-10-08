@@ -236,9 +236,29 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
 
 @media (max-width:860px){.rk-layout{grid-template-columns:1fr}}
 @media (max-width:640px){
-  .team-cell .full{display:none}.team-cell .ab{display:inline}
   .bar{width:90px}
   th,td{padding:8px 7px}
+}
+/* phones: team abbreviations, frozen name column, key columns only (More stats shows the rest), schedule as cards */
+.more-stats{display:none}
+@media (max-width:699.98px){
+  .team-cell .full{display:none}.team-cell .ab{display:inline}
+  .compact .x{display:none}
+  .more-stats{display:inline-block;margin:0 0 8px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:700 13px var(--font-body);cursor:pointer}
+  .more-stats:hover{border-color:var(--accent);color:var(--accent)}
+  .fz,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{position:sticky;left:0;z-index:1}
+  td.fz,.tbl-wrap table:not(.fzd):not(.plays) td:first-child{background:var(--surface)}
+  tbody tr:hover td.fz,.tbl-wrap table:not(.fzd):not(.plays) tbody tr:hover td:first-child,td.fz.sorted{background:var(--surface-2)}
+  th.fz,.tbl-wrap table:not(.fzd):not(.plays) th:first-child{z-index:2}
+  .fz-rk{width:34px;min-width:34px;max-width:34px;padding-inline:6px}
+  .fz2{left:34px}
+  .fz-end,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{box-shadow:inset -1px 0 0 var(--line)}
+  td.fz{max-width:150px;white-space:normal}
+  .rights-td{white-space:normal;min-width:100px}
+  .compact th,.compact td{padding-inline:5px}
+  .compact .rights-td .sub{display:none}
+  .compact .rights-td .badge{display:table;margin-bottom:2px}
+  .sched-cards .cards{grid-template-columns:minmax(0,1fr);gap:10px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -376,10 +396,11 @@ function keepPlace(el, fn){ const before = el ? el.getBoundingClientRect().top :
   if(same) window.scrollBy(0, same.getBoundingClientRect().top - before); }
 
 /* ---------- scores ---------- */
-function gameCard(g){
-  const st = g.final ? `<span class="fin">Final${g.suffix?" / "+g.suffix:""}</span>` : `<span>${fmtTime(g.iso, g.tz)}</span>`;
+function gameCard(g, opt={}){
+  const st = (g.final ? `<span class="fin">Final${g.suffix?" / "+g.suffix:""}</span>` : `<span>${fmtTime(g.iso, g.tz)}</span>`)
+    + (opt.team && g.final ? `<span class="res">${resultFor(g, opt.team)}</span>` : "");
   const row = (id, s, win) => `<div class="g-row ${g.final&&!win?"lose":""}"><button class="g-team team-link" data-team="${id}" title="Open ${esc(tn(id))}">${logo(id,"logo",false)}<span class="nm"><span class="u">${esc(tn(id))}</span><span class="rec">${recOf[id]||""}</span></span></button><span class="sc">${g.final?s:""}</span></div>`;
-  return `<article class="game"><div class="g-status">${st}<span>#${esc(g.id)}</span></div>${row(g.a,g.ag,g.ag>g.hg)}${row(g.h,g.hg,g.hg>g.ag)}<div class="g-foot"><span class="g-rink">${esc(g.venue)}${g.city?" · "+esc(g.city):""}</span><button class="gc-btn" data-game="${g.id}">${g.final?"Box score":"Preview"} ›</button></div></article>`;
+  return `<article class="game"><div class="g-status">${opt.date ? `<span>${esc(g.day)}</span>` : ""}${st}${opt.date ? "" : `<span>#${esc(g.id)}</span>`}</div>${row(g.a,g.ag,g.ag>g.hg)}${row(g.h,g.hg,g.hg>g.ag)}<div class="g-foot"><span class="g-rink">${esc(g.venue)}${g.city?" · "+esc(g.city):""}</span><button class="gc-btn" data-game="${g.id}">${g.final?"Box score":"Preview"} ›</button></div></article>`;
 }
 function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.date)) m.set(g.date,[]); m.get(g.date).push(g); }); return [...m]; }
 (function(){
@@ -412,6 +433,7 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
 })();
 
 /* ---------- schedule ---------- */
+const PHONE = matchMedia("(max-width: 699.98px)");
 (function(){
   const all = D.games.slice().sort((a,b)=>a.iso<b.iso?-1:1);
   const months = SEASON_MONTHS;
@@ -431,6 +453,15 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
     const hidden = expanded ? 0 : start;
     const list = full.slice(hidden);
     if(!list.length){ $("#sh-body").innerHTML = `<div class="empty">No games match these filters.</div>`; return; }
+    if(PHONE.matches){
+      const more = hidden ? `<button class="show-more" id="sh-more">Show earlier games <span class="sub">(${hidden})</span></button>` : "";
+      const months = [...new Set(list.map(g=>g.date.slice(0,7)))];
+      $("#sh-body").innerHTML = more + `<div class="sched-cards">${months.map(m=>`<div class="day"><h2>${monName(m)}</h2><div class="cards">${
+        list.filter(g=>g.date.startsWith(m)).map(g=>gameCard(g,{date:true,team}).replace('<article class="game"', `<article class="game" data-date="${g.date}"`)).join("")}</div></div>`).join("")}</div>`;
+      const mb = $("#sh-more");
+      if(mb) mb.onclick = () => keepPlace($("#sh-body article[data-date]"), () => { expanded = true; render(); });
+      return;
+    }
     const cols = 8 + (team?1:0);
     let rows = hidden ? `<tr class="more-row"><td colspan="${cols}"><button class="show-more" id="sh-more">Show earlier games <span class="sub">(${hidden})</span></button></td></tr>` : "", lastMon="";
     list.forEach(g=>{
@@ -453,18 +484,28 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
     if(m) m.onclick = () => keepPlace($("#sh-body tbody tr[data-date]"), () => { expanded = true; render(); });
   }
   $("#sh-team").onchange=()=>{expanded=false;render();}; $("#sh-month").onchange=()=>{expanded=false;render();};
+  PHONE.addEventListener("change", render);
   $("#sh-show").onclick=e=>{const b=e.target.closest("button"); if(!b) return; show=b.dataset.k; expanded=false; document.querySelectorAll("#sh-show button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render();};
   render();
 })();
 
 /* ---------- sortable table helper ---------- */
-function sortTable(el, cols, rows, state, rowHtml){
+// keep: on phones only these column keys show until "More stats" is tapped (the choice sticks to el)
+function sortTable(el, cols, rows, state, rowHtml, keep){
+  // phones: freeze the name column (the first left-aligned one) and a visible rank column right before it
+  const shown = c => !keep || keep.includes(c.k);
+  const ni = cols.findIndex(c=>c.l), pre = ni>0 && shown(cols[ni-1]) && cols.slice(0,ni-1).every(c=>!shown(c));
+  const extra = cols.map((c,i)=>[!shown(c)&&"x", pre&&i===ni-1&&"fz fz-rk", i===ni&&`fz fz-end${pre?" fz2":""}`].filter(Boolean).join(" "));
   const draw = () => {
     const c = cols.find(c=>c.k===state.k);
     const sorted = rows.slice().sort((a,b)=>{ const va=c.v?c.v(a):a[c.k], vb=c.v?c.v(b):b[c.k]; return (va<vb?-1:va>vb?1:0)*(state.asc?1:-1); });
-    el.innerHTML = `<div class="tbl-wrap"><table><thead><tr>${cols.map(c=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
+    const btn = keep ? `<button class="more-stats" aria-expanded="${!!el._all}">${el._all?"Fewer stats":"More stats"}</button>` : "";
+    el.innerHTML = `${btn}<div class="tbl-wrap${keep&&!el._all?" compact":""}"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
+    el.querySelectorAll("tbody tr").forEach(tr => { const tds = tr.children; for(let i=0;i<tds.length;i++) if(extra[i]) tds[i].className += " "+extra[i]; });
   };
-  el.onclick = e => { const th=e.target.closest("th.sortable"); if(!th) return; const k=th.dataset.k; const c=cols.find(c=>c.k===k);
+  el.onclick = e => {
+    if(e.target.closest(".more-stats")){ el._all = !el._all; draw(); return; }
+    const th=e.target.closest("th.sortable"); if(!th) return; const k=th.dataset.k; const c=cols.find(c=>c.k===k);
     if(state.k===k) state.asc=!state.asc; else { state.k=k; state.asc=!!c.asc; } draw(); };
   draw(); return draw;
 }
@@ -484,7 +525,7 @@ const cell = (k, sk, v, cls="") => `<td class="${cls} ${k===sk?"sorted":""}">${v
     {k:"home_record",h:"Home",s:false},{k:"visiting_record",h:"Away",s:false},{k:"past_10",h:"L10",s:false},{k:"streak_wl",h:"Strk",s:false}];
   $("#standings").innerHTML = `<div class="sec-head"><div class="grow"><span class="eyebrow">League table</span><h1>Standings</h1></div><p class="num">Through ${fmtDate(D.updated)}</p></div><div id="st-t"></div>
     <p class="note">Click a column to sort. Records in Home, Away and L10 read W-L-OTL-SOL. P% is points per game played. PP is power-play goals out of power-play chances; PK is penalties killed out of times shorthanded. SHGF and SHGA are shorthanded goals scored and allowed (a goal against while on the power play counts in SHGA).</p>`;
-  sortTable($("#st-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id)}</td>${cell("gp",k,r.gp)}${cell("w",k,r.w)}${cell("l",k,r.l)}${cell("otl",k,r.otl)}${cell("sol",k,r.sol)}${cell("pts",k,r.pts,"pts")}${cell("pct",k,r.pct.toFixed(3))}${cell("rw",k,r.rw)}${cell("gf",k,r.gf)}${cell("ga",k,r.ga)}${cell("diff",k,sgn(r.diff,0),r.diff>0?"pos":r.diff<0?"neg":"")}${cell("pp",k,`${r.power_play_goals}/${r.power_plays}`,"frac")}${cell("power_play_pct",k,r.power_play_pct)}${cell("pk",k,`${r.kills}/${r.times_short_handed}`,"frac")}${cell("penalty_kill_pct",k,r.penalty_kill_pct)}${cell("shgf",k,r.short_handed_goals_for)}${cell("shga",k,r.short_handed_goals_against)}<td>${r.home_record}</td><td>${r.visiting_record}</td><td>${r.past_10}</td><td>${r.streak_wl}</td></tr>`);
+  sortTable($("#st-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id)}</td>${cell("gp",k,r.gp)}${cell("w",k,r.w)}${cell("l",k,r.l)}${cell("otl",k,r.otl)}${cell("sol",k,r.sol)}${cell("pts",k,r.pts,"pts")}${cell("pct",k,r.pct.toFixed(3))}${cell("rw",k,r.rw)}${cell("gf",k,r.gf)}${cell("ga",k,r.ga)}${cell("diff",k,sgn(r.diff,0),r.diff>0?"pos":r.diff<0?"neg":"")}${cell("pp",k,`${r.power_play_goals}/${r.power_plays}`,"frac")}${cell("power_play_pct",k,r.power_play_pct)}${cell("pk",k,`${r.kills}/${r.times_short_handed}`,"frac")}${cell("penalty_kill_pct",k,r.penalty_kill_pct)}${cell("shgf",k,r.short_handed_goals_for)}${cell("shga",k,r.short_handed_goals_against)}<td>${r.home_record}</td><td>${r.visiting_record}</td><td>${r.past_10}</td><td>${r.streak_wl}</td></tr>`, ["rank","team","gp","w","l","otl","pts"]);
 })();
 
 /* ---------- stats ---------- */
@@ -505,8 +546,8 @@ const cell = (k, sk, v, cls="") => `<td class="${cls} ${k===sk?"sorted":""}">${v
     // a name search looks across every team, even when one team is selected
     const src=(kind==="sk"?D.skaters:D.goalies).filter(p=> q ? p.name.toLowerCase().includes(q) : (!team||p.team===team));
     const pl = p => `<td class="l">${playerLink(p.id,p.name,p.num)}</td><td class="l">${teamCell(p.team)}</td>`;
-    if(kind==="sk") sortTable($("#st-body"), skCols, src, state.sk, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}${cell("born",k,esc(p.born))}</tr>`);
-    else sortTable($("#st-body"), goCols, src, state.go, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`);
+    if(kind==="sk") sortTable($("#st-body"), skCols, src, state.sk, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}${cell("born",k,esc(p.born))}</tr>`, ["name","team","gp","g","a","pts"]);
+    else sortTable($("#st-body"), goCols, src, state.go, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`, ["name","team","gp","sv","gaa"]);
     $("#st-note").textContent = `${src.length} ${kind==="sk"?"skaters":"goalies"} with at least one game played. Click a column to sort.`;
   }
   $("#st-kind").onclick=e=>{const b=e.target.closest("button"); if(!b) return; kind=b.dataset.k; document.querySelectorAll("#st-kind button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render();};
@@ -565,7 +606,7 @@ function rosterTable(el, players, showTeam){
   if(showTeam) cols.push({k:"team",h:"Team",l:true,v:p=>tn(p.team),asc:true});
   cols.push({k:"pos",h:"Pos",v:p=>POS_ORDER[p.pos]??3,asc:true},{k:"age",h:"Age",v:p=>p.age??99,asc:true},{k:"dob",h:"Born",asc:true},{k:"shoots",h:"S/C",s:false},{k:"ht",h:"Ht",s:false},{k:"wt",h:"Wt",v:p=>+p.wt||0},{k:"home",h:"Hometown",l:true,asc:true},{k:"kind",h:"Junior rights",l:true,v:p=>kRank[p.kind],asc:true,t:"WHL or other league rights, from the league's roster data"});
   const fmtDob = d => d ? new Date(d+"T12:00:00").toLocaleDateString("en-CA",{year:"numeric",month:"short",day:"numeric"}) : "";
-  sortTable(el, cols, rows, {k:showTeam?"kind":"pos",asc:true}, (p,i,k)=>`<tr>${cell("num",k,esc(p.num),"rk")}<td class="l">${playerLink(p.id,p.name)}</td>${showTeam?`<td class="l">${teamCell(p.team)}</td>`:""}${cell("pos",k,esc(p.pos))}${cell("age",k,p.age??"")}${cell("dob",k,fmtDob(p.dob))}<td>${esc(p.shoots)}</td><td>${esc(p.ht)}</td>${cell("wt",k,esc(p.wt))}${cell("home",k,esc(p.home),"l")}<td class="l ${k==="kind"?"sorted":""}">${rightsHtml(p)}</td></tr>`);
+  sortTable(el, cols, rows, {k:showTeam?"kind":"pos",asc:true}, (p,i,k)=>`<tr>${cell("num",k,esc(p.num),"rk")}<td class="l">${playerLink(p.id,p.name)}</td>${showTeam?`<td class="l">${teamCell(p.team)}</td>`:""}${cell("pos",k,esc(p.pos))}${cell("age",k,p.age??"")}${cell("dob",k,fmtDob(p.dob))}<td>${esc(p.shoots)}</td><td>${esc(p.ht)}</td>${cell("wt",k,esc(p.wt))}${cell("home",k,esc(p.home),"l")}<td class="l rights-td ${k==="kind"?"sorted":""}">${rightsHtml(p)}</td></tr>`, ["num","name","pos","age","kind"]);
 }
 (function(){
   const P = D.rosters.players;
@@ -603,10 +644,10 @@ function openTeam(id){
     <h2 class="tbl-h">Goalies</h2><div id="tm-go"></div>
     <h2 class="tbl-h">Roster</h2><div id="tm-ro"></div>`;
   const skCols=[{k:"name",h:"Player",l:true,asc:true},{k:"pos",h:"Pos",asc:true},{k:"gp",h:"GP"},{k:"g",h:"G"},{k:"a",h:"A"},{k:"pts",h:"PTS"},{k:"pmg",h:"P/GP"},{k:"ppg",h:"PPG",t:"Power-play goals"},{k:"gwg",h:"GWG",t:"Game-winning goals"},{k:"pim",h:"PIM"}];
-  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}</tr>`);
+  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}</tr>`, ["name","gp","g","a","pts"]);
   else $("#tm-sk").innerHTML = `<p class="note">No skater stats yet this season.</p>`;
   const goCols=[{k:"name",h:"Goalie",l:true,asc:true},{k:"gp",h:"GP"},{k:"w",h:"W"},{k:"l",h:"L"},{k:"otl",h:"OTL"},{k:"sv",h:"SV%"},{k:"gaa",h:"GAA",asc:true},{k:"saves",h:"SV"},{k:"so",h:"SO"},{k:"min",h:"MIN"}];
-  if(go.length) sortTable($("#tm-go"), goCols, go, {k:"gp",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name)}</td>${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`);
+  if(go.length) sortTable($("#tm-go"), goCols, go, {k:"gp",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name)}</td>${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`, ["name","gp","sv","gaa"]);
   else $("#tm-go").innerHTML = `<p class="note">No goalie stats yet this season.</p>`;
   if(roster.length) rosterTable($("#tm-ro"), roster, false); else $("#tm-ro").innerHTML = `<p class="note">Roster not loaded yet.</p>`;
   $("#tm-back").onclick=goBack;
@@ -755,8 +796,8 @@ function boxScoreHtml(g, b){
   const sideBox = (t, tid) => {
     const sk = t.skaters.slice().sort((x,y)=>y.pts-x.pts||y.g-x.g||(+x.num||99)-(+y.num||99));
     return `<div><h2 class="tbl-h">${logo(tid)} ${esc(tn(tid))}</h2>
-      <div class="tbl-wrap"><table><thead><tr><th>#</th><th class="l">Skater</th><th>Pos</th><th>G</th><th>A</th><th>PTS</th><th>PIM</th></tr></thead><tbody>${sk.map(p=>`<tr><td class="rk">${esc(p.num)}</td><td class="l">${playerLink(p.id,p.name)}</td><td>${esc(p.pos)}</td><td>${p.g}</td><td>${p.a}</td><td class="pts">${p.pts}</td><td>${p.pim}</td></tr>`).join("")}</tbody></table></div>
-      <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>#</th><th class="l">Goalie</th><th>TOI</th><th>SA</th><th>GA</th><th>SV</th><th>SV%</th><th>Dec</th></tr></thead><tbody>${t.goalies.map(p=>`<tr><td class="rk">${esc(p.num)}</td><td class="l">${playerLink(p.id,p.name)}</td><td>${esc(p.toi)}</td><td>${p.sa}</td><td>${p.ga}</td><td>${p.sv}</td><td>${p.sa?(p.sv/p.sa).toFixed(3).replace(/^0/,""):"—"}</td><td>${esc(p.res)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="tbl-wrap compact"><table class="fzd"><thead><tr><th class="x">#</th><th class="l fz fz-end">Skater</th><th class="x">Pos</th><th>G</th><th>A</th><th>PTS</th><th>PIM</th></tr></thead><tbody>${sk.map(p=>`<tr><td class="rk x">${esc(p.num)}</td><td class="l fz fz-end">${playerLink(p.id,p.name)}</td><td class="x">${esc(p.pos)}</td><td>${p.g}</td><td>${p.a}</td><td class="pts">${p.pts}</td><td>${p.pim}</td></tr>`).join("")}</tbody></table></div>
+      <div class="tbl-wrap compact" style="margin-top:10px"><table class="fzd"><thead><tr><th class="x">#</th><th class="l fz fz-end">Goalie</th><th class="x">TOI</th><th>SA</th><th>GA</th><th class="x">SV</th><th>SV%</th><th>Dec</th></tr></thead><tbody>${t.goalies.map(p=>`<tr><td class="rk x">${esc(p.num)}</td><td class="l fz fz-end">${playerLink(p.id,p.name)}</td><td class="x">${esc(p.toi)}</td><td>${p.sa}</td><td>${p.ga}</td><td class="x">${p.sv}</td><td>${p.sa?(p.sv/p.sa).toFixed(3).replace(/^0/,""):"—"}</td><td>${esc(p.res)}</td></tr>`).join("")}</tbody></table></div>
       ${t.coach?`<p class="note">Head coach: ${esc(t.coach)}</p>`:""}</div>`;
   };
   h += `<div class="gc-grid">${sideBox(A, g.a)}${sideBox(H, g.h)}</div>`;
