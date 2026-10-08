@@ -239,16 +239,13 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   .bar{width:90px}
   th,td{padding:8px 7px}
 }
-/* phones: team abbreviations, frozen name column, key columns only (More stats shows the rest), schedule as cards */
-.more-stats{display:none}
+/* phones: team abbreviations, frozen name column, slimmer box scores, schedule as cards */
 @media (max-width:699.98px){
   body{margin:0}
   main{overflow-x:clip}
   .game{grid-template-columns:minmax(0,1fr)}
   .team-cell .full{display:none}.team-cell .ab{display:inline}
   .compact .x{display:none}
-  .more-stats{display:inline-block;margin:0 0 8px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:700 13px var(--font-body);cursor:pointer}
-  .more-stats:hover{border-color:var(--accent);color:var(--accent)}
   .fz,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{position:sticky;left:0;z-index:1}
   td.fz,.tbl-wrap table:not(.fzd):not(.plays) td:first-child{background:var(--surface)}
   tbody tr:hover td.fz,.tbl-wrap table:not(.fzd):not(.plays) tbody tr:hover td:first-child,td.fz.sorted{background:var(--surface-2)}
@@ -257,10 +254,14 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   .fz2{left:38px}
   .fz-end,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{box-shadow:inset -1px 0 0 var(--line)}
   td.fz{max-width:150px;white-space:normal}
-  .rights-td{white-space:normal;min-width:100px}
+  .rights-td{white-space:normal;min-width:220px}
   .compact th,.compact td{padding-inline:5px}
-  .compact .rights-td .sub{display:none}
-  .compact .rights-td .badge{display:table;margin-bottom:2px}
+  /* power rankings: the main columns fill the screen; SCHED and the bar wait just past the right edge */
+  #rk-t .tbl-wrap{scrollbar-width:none}
+  #rk-t .tbl-wrap::-webkit-scrollbar{display:none}
+  #rk-t table{width:calc(100% + 174px)}
+  #rk-t .rk-sched{width:70px;min-width:70px}
+  #rk-t .rk-bar{width:104px;min-width:104px}
   .sched-cards .cards{grid-template-columns:minmax(0,1fr);gap:10px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -493,21 +494,17 @@ const PHONE = matchMedia("(max-width: 699.98px)");
 })();
 
 /* ---------- sortable table helper ---------- */
-// keep: on phones only these column keys show; with toggle, "More stats" shows the rest (the choice sticks to el)
-function sortTable(el, cols, rows, state, rowHtml, keep, toggle=true){
-  // phones: freeze the name column (the first left-aligned one) and a visible rank column right before it
-  const shown = c => !keep || keep.includes(c.k);
-  const ni = cols.findIndex(c=>c.l), pre = ni>0 && shown(cols[ni-1]) && cols.slice(0,ni-1).every(c=>!shown(c));
-  const extra = cols.map((c,i)=>[!shown(c)&&"x", pre&&i===ni-1&&"fz fz-rk", i===ni&&`fz fz-end${pre?" fz2":""}`].filter(Boolean).join(" "));
+function sortTable(el, cols, rows, state, rowHtml){
+  // phones: freeze the name column (the first left-aligned one) and the rank column right before it
+  const ni = cols.findIndex(c=>c.l), pre = ni===1;
+  const extra = cols.map((c,i)=>[c.cls, pre&&i===0&&"fz fz-rk", i===ni&&`fz fz-end${pre?" fz2":""}`].filter(Boolean).join(" "));
   const draw = () => {
     const c = cols.find(c=>c.k===state.k);
     const sorted = rows.slice().sort((a,b)=>{ const va=c.v?c.v(a):a[c.k], vb=c.v?c.v(b):b[c.k]; return (va<vb?-1:va>vb?1:0)*(state.asc?1:-1); });
-    const btn = keep && toggle ? `<button class="more-stats" aria-expanded="${!!el._all}">${el._all?"Fewer stats":"More stats"}</button>` : "";
-    el.innerHTML = `${btn}<div class="tbl-wrap${keep&&!(toggle&&el._all)?" compact":""}"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
+    el.innerHTML = `<div class="tbl-wrap"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
     el.querySelectorAll("tbody tr").forEach(tr => { const tds = tr.children; for(let i=0;i<tds.length;i++) if(extra[i]) tds[i].className += " "+extra[i]; });
   };
   el.onclick = e => {
-    if(e.target.closest(".more-stats")){ el._all = !el._all; draw(); return; }
     const th=e.target.closest("th.sortable"); if(!th) return; const k=th.dataset.k; const c=cols.find(c=>c.k===k);
     if(state.k===k) state.asc=!state.asc; else { state.k=k; state.asc=!!c.asc; } draw(); };
   draw(); return draw;
@@ -528,7 +525,7 @@ const cell = (k, sk, v, cls="") => `<td class="${cls} ${k===sk?"sorted":""}">${v
     {k:"home_record",h:"Home",s:false},{k:"visiting_record",h:"Away",s:false},{k:"past_10",h:"L10",s:false},{k:"streak_wl",h:"Strk",s:false}];
   $("#standings").innerHTML = `<div class="sec-head"><div class="grow"><span class="eyebrow">League table</span><h1>Standings</h1></div><p class="num">Through ${fmtDate(D.updated)}</p></div><div id="st-t"></div>
     <p class="note">Click a column to sort. Records in Home, Away and L10 read W-L-OTL-SOL. P% is points per game played. PP is power-play goals out of power-play chances; PK is penalties killed out of times shorthanded. SHGF and SHGA are shorthanded goals scored and allowed (a goal against while on the power play counts in SHGA).</p>`;
-  sortTable($("#st-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id)}</td>${cell("gp",k,r.gp)}${cell("w",k,r.w)}${cell("l",k,r.l)}${cell("otl",k,r.otl)}${cell("sol",k,r.sol)}${cell("pts",k,r.pts,"pts")}${cell("pct",k,r.pct.toFixed(3))}${cell("rw",k,r.rw)}${cell("gf",k,r.gf)}${cell("ga",k,r.ga)}${cell("diff",k,sgn(r.diff,0),r.diff>0?"pos":r.diff<0?"neg":"")}${cell("pp",k,`${r.power_play_goals}/${r.power_plays}`,"frac")}${cell("power_play_pct",k,r.power_play_pct)}${cell("pk",k,`${r.kills}/${r.times_short_handed}`,"frac")}${cell("penalty_kill_pct",k,r.penalty_kill_pct)}${cell("shgf",k,r.short_handed_goals_for)}${cell("shga",k,r.short_handed_goals_against)}<td>${r.home_record}</td><td>${r.visiting_record}</td><td>${r.past_10}</td><td>${r.streak_wl}</td></tr>`, ["rank","team","gp","w","l","otl","pts"]);
+  sortTable($("#st-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id)}</td>${cell("gp",k,r.gp)}${cell("w",k,r.w)}${cell("l",k,r.l)}${cell("otl",k,r.otl)}${cell("sol",k,r.sol)}${cell("pts",k,r.pts,"pts")}${cell("pct",k,r.pct.toFixed(3))}${cell("rw",k,r.rw)}${cell("gf",k,r.gf)}${cell("ga",k,r.ga)}${cell("diff",k,sgn(r.diff,0),r.diff>0?"pos":r.diff<0?"neg":"")}${cell("pp",k,`${r.power_play_goals}/${r.power_plays}`,"frac")}${cell("power_play_pct",k,r.power_play_pct)}${cell("pk",k,`${r.kills}/${r.times_short_handed}`,"frac")}${cell("penalty_kill_pct",k,r.penalty_kill_pct)}${cell("shgf",k,r.short_handed_goals_for)}${cell("shga",k,r.short_handed_goals_against)}<td>${r.home_record}</td><td>${r.visiting_record}</td><td>${r.past_10}</td><td>${r.streak_wl}</td></tr>`);
 })();
 
 /* ---------- stats ---------- */
@@ -579,12 +576,17 @@ let currentRank = {};
     const prov = season===seasons[0];
     if(prov) rows.forEach(r=>currentRank[r.team_id]=r);
     const bar = v => { const d=v-base, w=Math.abs(d)/max*50; return `<div class="bar"><span style="left:${d>=0?50:50-w}%;width:${w}%;background:var(${d>=0?"--pos-bar":"--neg-bar"})"></span></div>`; };
-    const cols=[{k:"rank",h:"#",asc:true},{k:"team",h:"Team",l:true,v:r=>tn(r.team_id),asc:true},{k:"gp",h:"GP"},{k:"rec",h:"W-L-OTL",v:r=>r.w*1000-r.l,t:"Wins, regulation losses, overtime/shootout losses"},{k:"agd",h:"AGD",t:"Average goal differential (capped at 7)"},{k:"sched",h:"SCHED",t:"Strength of schedule"},{k:"rating",h:"Rating"},{k:"bar",h:"",s:false}];
-    sortTable($("#rk-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id, prov)}${r.gp<5?`<span class="chip" title="Fewer than 5 games played">Prov</span>`:""}</td>${cell("gp",k,r.gp)}${cell("rec",k,r.rec,"rec-cell")}${cell("agd",k,sgn(r.agd),r.agd>0?"pos":r.agd<0?"neg":"")}${cell("sched",k,r.sched.toFixed(2))}${cell("rating",k,`<span class="rating">${r.rating.toFixed(2)}</span>`)}<td>${bar(r.rating)}</td></tr>`, ["rank","team","gp","rec","agd","rating"], false);
+    const def={rank:{k:"rank",h:"#",asc:true},team:{k:"team",h:"Team",l:true,v:r=>tn(r.team_id),asc:true},gp:{k:"gp",h:"GP"},rec:{k:"rec",h:"W-L-OTL",v:r=>r.w*1000-r.l,t:"Wins, regulation losses, overtime/shootout losses"},agd:{k:"agd",h:"AGD",t:"Average goal differential (capped at 7)"},sched:{k:"sched",h:"SCHED",t:"Strength of schedule",cls:"rk-sched"},rating:{k:"rating",h:"Rating"},bar:{k:"bar",h:"",s:false,cls:"rk-bar"}};
+    const td={rank:(r,k)=>cell("rank",k,r.rank,"rk"), team:r=>`<td class="l">${teamCell(r.team_id, prov)}${r.gp<5?`<span class="chip" title="Fewer than 5 games played">Prov</span>`:""}</td>`,
+      gp:(r,k)=>cell("gp",k,r.gp), rec:(r,k)=>cell("rec",k,r.rec,"rec-cell"), agd:(r,k)=>cell("agd",k,sgn(r.agd),r.agd>0?"pos":r.agd<0?"neg":""),
+      sched:(r,k)=>cell("sched",k,r.sched.toFixed(2)), rating:(r,k)=>cell("rating",k,`<span class="rating">${r.rating.toFixed(2)}</span>`), bar:r=>`<td>${bar(r.rating)}</td>`};
+    const order = PHONE.matches ? ["rank","team","gp","rec","agd","rating","sched","bar"] : ["rank","team","gp","rec","agd","sched","rating","bar"];
+    sortTable($("#rk-t"), order.map(k=>def[k]), rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${order.map(c=>td[c](r,k)).join("")}</tr>`);
     $("#rk-note").textContent = prov
       ? "Early-season ratings swing a lot: most teams have played only two or three games, and many haven't played each other yet. Expect them to settle after 8–10 games. PROV marks teams with fewer than five games."
       : "Final 2025–26 regular-season ratings from all league games. Teams with only a handful of games appeared as crossover opponents. Player stats are only loaded for the current season.";
   }
+  PHONE.addEventListener("change", render);
   $("#rk-season").onclick=e=>{const b=e.target.closest("button"); if(!b) return; season=b.dataset.s; document.querySelectorAll("#rk-season button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render();};
   render();
 })();
@@ -609,7 +611,7 @@ function rosterTable(el, players, showTeam){
   if(showTeam) cols.push({k:"team",h:"Team",l:true,v:p=>tn(p.team),asc:true});
   cols.push({k:"pos",h:"Pos",v:p=>POS_ORDER[p.pos]??3,asc:true},{k:"age",h:"Age",v:p=>p.age??99,asc:true},{k:"dob",h:"Born",asc:true},{k:"shoots",h:"S/C",s:false},{k:"ht",h:"Ht",s:false},{k:"wt",h:"Wt",v:p=>+p.wt||0},{k:"home",h:"Hometown",l:true,asc:true},{k:"kind",h:"Junior rights",l:true,v:p=>kRank[p.kind],asc:true,t:"WHL or other league rights, from the league's roster data"});
   const fmtDob = d => d ? new Date(d+"T12:00:00").toLocaleDateString("en-CA",{year:"numeric",month:"short",day:"numeric"}) : "";
-  sortTable(el, cols, rows, {k:showTeam?"kind":"pos",asc:true}, (p,i,k)=>`<tr>${cell("num",k,esc(p.num),"rk")}<td class="l">${playerLink(p.id,p.name)}</td>${showTeam?`<td class="l">${teamCell(p.team)}</td>`:""}${cell("pos",k,esc(p.pos))}${cell("age",k,p.age??"")}${cell("dob",k,fmtDob(p.dob))}<td>${esc(p.shoots)}</td><td>${esc(p.ht)}</td>${cell("wt",k,esc(p.wt))}${cell("home",k,esc(p.home),"l")}<td class="l rights-td ${k==="kind"?"sorted":""}">${rightsHtml(p)}</td></tr>`, ["num","name","pos","age","kind"]);
+  sortTable(el, cols, rows, {k:showTeam?"kind":"pos",asc:true}, (p,i,k)=>`<tr>${cell("num",k,esc(p.num),"rk")}<td class="l">${playerLink(p.id,p.name)}</td>${showTeam?`<td class="l">${teamCell(p.team)}</td>`:""}${cell("pos",k,esc(p.pos))}${cell("age",k,p.age??"")}${cell("dob",k,fmtDob(p.dob))}<td>${esc(p.shoots)}</td><td>${esc(p.ht)}</td>${cell("wt",k,esc(p.wt))}${cell("home",k,esc(p.home),"l")}<td class="l rights-td ${k==="kind"?"sorted":""}">${rightsHtml(p)}</td></tr>`);
 }
 (function(){
   const P = D.rosters.players;
