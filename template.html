@@ -242,6 +242,9 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
 /* phones: team abbreviations, frozen name column, key columns only (More stats shows the rest), schedule as cards */
 .more-stats{display:none}
 @media (max-width:699.98px){
+  body{margin:0}
+  main{overflow-x:clip}
+  .game{grid-template-columns:minmax(0,1fr)}
   .team-cell .full{display:none}.team-cell .ab{display:inline}
   .compact .x{display:none}
   .more-stats{display:inline-block;margin:0 0 8px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:700 13px var(--font-body);cursor:pointer}
@@ -250,8 +253,8 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   td.fz,.tbl-wrap table:not(.fzd):not(.plays) td:first-child{background:var(--surface)}
   tbody tr:hover td.fz,.tbl-wrap table:not(.fzd):not(.plays) tbody tr:hover td:first-child,td.fz.sorted{background:var(--surface-2)}
   th.fz,.tbl-wrap table:not(.fzd):not(.plays) th:first-child{z-index:2}
-  .fz-rk{width:34px;min-width:34px;max-width:34px;padding-inline:6px}
-  .fz2{left:34px}
+  .fz-rk{width:38px;min-width:38px;max-width:38px;padding-inline:6px}
+  .fz2{left:38px}
   .fz-end,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{box-shadow:inset -1px 0 0 var(--line)}
   td.fz{max-width:150px;white-space:normal}
   .rights-td{white-space:normal;min-width:100px}
@@ -490,8 +493,8 @@ const PHONE = matchMedia("(max-width: 699.98px)");
 })();
 
 /* ---------- sortable table helper ---------- */
-// keep: on phones only these column keys show until "More stats" is tapped (the choice sticks to el)
-function sortTable(el, cols, rows, state, rowHtml, keep){
+// keep: on phones only these column keys show; with toggle, "More stats" shows the rest (the choice sticks to el)
+function sortTable(el, cols, rows, state, rowHtml, keep, toggle=true){
   // phones: freeze the name column (the first left-aligned one) and a visible rank column right before it
   const shown = c => !keep || keep.includes(c.k);
   const ni = cols.findIndex(c=>c.l), pre = ni>0 && shown(cols[ni-1]) && cols.slice(0,ni-1).every(c=>!shown(c));
@@ -499,8 +502,8 @@ function sortTable(el, cols, rows, state, rowHtml, keep){
   const draw = () => {
     const c = cols.find(c=>c.k===state.k);
     const sorted = rows.slice().sort((a,b)=>{ const va=c.v?c.v(a):a[c.k], vb=c.v?c.v(b):b[c.k]; return (va<vb?-1:va>vb?1:0)*(state.asc?1:-1); });
-    const btn = keep ? `<button class="more-stats" aria-expanded="${!!el._all}">${el._all?"Fewer stats":"More stats"}</button>` : "";
-    el.innerHTML = `${btn}<div class="tbl-wrap${keep&&!el._all?" compact":""}"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
+    const btn = keep && toggle ? `<button class="more-stats" aria-expanded="${!!el._all}">${el._all?"Fewer stats":"More stats"}</button>` : "";
+    el.innerHTML = `${btn}<div class="tbl-wrap${keep&&!(toggle&&el._all)?" compact":""}"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
     el.querySelectorAll("tbody tr").forEach(tr => { const tds = tr.children; for(let i=0;i<tds.length;i++) if(extra[i]) tds[i].className += " "+extra[i]; });
   };
   el.onclick = e => {
@@ -546,8 +549,8 @@ const cell = (k, sk, v, cls="") => `<td class="${cls} ${k===sk?"sorted":""}">${v
     // a name search looks across every team, even when one team is selected
     const src=(kind==="sk"?D.skaters:D.goalies).filter(p=> q ? p.name.toLowerCase().includes(q) : (!team||p.team===team));
     const pl = p => `<td class="l">${playerLink(p.id,p.name,p.num)}</td><td class="l">${teamCell(p.team)}</td>`;
-    if(kind==="sk") sortTable($("#st-body"), skCols, src, state.sk, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}${cell("born",k,esc(p.born))}</tr>`, ["name","team","gp","g","a","pts"]);
-    else sortTable($("#st-body"), goCols, src, state.go, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`, ["name","team","gp","sv","gaa"]);
+    if(kind==="sk") sortTable($("#st-body"), skCols, src, state.sk, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}${cell("born",k,esc(p.born))}</tr>`);
+    else sortTable($("#st-body"), goCols, src, state.go, (p,i,k)=>`<tr><td class="rk">${i+1}</td>${pl(p)}${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`);
     $("#st-note").textContent = `${src.length} ${kind==="sk"?"skaters":"goalies"} with at least one game played. Click a column to sort.`;
   }
   $("#st-kind").onclick=e=>{const b=e.target.closest("button"); if(!b) return; kind=b.dataset.k; document.querySelectorAll("#st-kind button").forEach(x=>x.setAttribute("aria-pressed",x===b)); render();};
@@ -577,7 +580,7 @@ let currentRank = {};
     if(prov) rows.forEach(r=>currentRank[r.team_id]=r);
     const bar = v => { const d=v-base, w=Math.abs(d)/max*50; return `<div class="bar"><span style="left:${d>=0?50:50-w}%;width:${w}%;background:var(${d>=0?"--pos-bar":"--neg-bar"})"></span></div>`; };
     const cols=[{k:"rank",h:"#",asc:true},{k:"team",h:"Team",l:true,v:r=>tn(r.team_id),asc:true},{k:"gp",h:"GP"},{k:"rec",h:"W-L-OTL",v:r=>r.w*1000-r.l,t:"Wins, regulation losses, overtime/shootout losses"},{k:"agd",h:"AGD",t:"Average goal differential (capped at 7)"},{k:"sched",h:"SCHED",t:"Strength of schedule"},{k:"rating",h:"Rating"},{k:"bar",h:"",s:false}];
-    sortTable($("#rk-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id, prov)}${r.gp<5?`<span class="chip" title="Fewer than 5 games played">Prov</span>`:""}</td>${cell("gp",k,r.gp)}${cell("rec",k,r.rec,"rec-cell")}${cell("agd",k,sgn(r.agd),r.agd>0?"pos":r.agd<0?"neg":"")}${cell("sched",k,r.sched.toFixed(2))}${cell("rating",k,`<span class="rating">${r.rating.toFixed(2)}</span>`)}<td>${bar(r.rating)}</td></tr>`);
+    sortTable($("#rk-t"), cols, rows, {k:"rank",asc:true}, (r,i,k)=>`<tr>${cell("rank",k,r.rank,"rk")}<td class="l">${teamCell(r.team_id, prov)}${r.gp<5?`<span class="chip" title="Fewer than 5 games played">Prov</span>`:""}</td>${cell("gp",k,r.gp)}${cell("rec",k,r.rec,"rec-cell")}${cell("agd",k,sgn(r.agd),r.agd>0?"pos":r.agd<0?"neg":"")}${cell("sched",k,r.sched.toFixed(2))}${cell("rating",k,`<span class="rating">${r.rating.toFixed(2)}</span>`)}<td>${bar(r.rating)}</td></tr>`, ["rank","team","gp","rec","agd","rating"], false);
     $("#rk-note").textContent = prov
       ? "Early-season ratings swing a lot: most teams have played only two or three games, and many haven't played each other yet. Expect them to settle after 8–10 games. PROV marks teams with fewer than five games."
       : "Final 2025–26 regular-season ratings from all league games. Teams with only a handful of games appeared as crossover opponents. Player stats are only loaded for the current season.";
@@ -644,10 +647,10 @@ function openTeam(id){
     <h2 class="tbl-h">Goalies</h2><div id="tm-go"></div>
     <h2 class="tbl-h">Roster</h2><div id="tm-ro"></div>`;
   const skCols=[{k:"name",h:"Player",l:true,asc:true},{k:"pos",h:"Pos",asc:true},{k:"gp",h:"GP"},{k:"g",h:"G"},{k:"a",h:"A"},{k:"pts",h:"PTS"},{k:"pmg",h:"P/GP"},{k:"ppg",h:"PPG",t:"Power-play goals"},{k:"gwg",h:"GWG",t:"Game-winning goals"},{k:"pim",h:"PIM"}];
-  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}</tr>`, ["name","gp","g","a","pts"]);
+  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}</tr>`);
   else $("#tm-sk").innerHTML = `<p class="note">No skater stats yet this season.</p>`;
   const goCols=[{k:"name",h:"Goalie",l:true,asc:true},{k:"gp",h:"GP"},{k:"w",h:"W"},{k:"l",h:"L"},{k:"otl",h:"OTL"},{k:"sv",h:"SV%"},{k:"gaa",h:"GAA",asc:true},{k:"saves",h:"SV"},{k:"so",h:"SO"},{k:"min",h:"MIN"}];
-  if(go.length) sortTable($("#tm-go"), goCols, go, {k:"gp",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name)}</td>${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`, ["name","gp","sv","gaa"]);
+  if(go.length) sortTable($("#tm-go"), goCols, go, {k:"gp",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name)}</td>${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`);
   else $("#tm-go").innerHTML = `<p class="note">No goalie stats yet this season.</p>`;
   if(roster.length) rosterTable($("#tm-ro"), roster, false); else $("#tm-ro").innerHTML = `<p class="note">Roster not loaded yet.</p>`;
   $("#tm-back").onclick=goBack;
