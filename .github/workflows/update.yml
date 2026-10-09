@@ -2,7 +2,9 @@ name: Update site
 
 on:
   schedule:
-    - cron: "5 * * * *"   # every hour at :05 (UTC); update.py decides if it's due (Mountain time)
+    # Twice an hour, off-peak: GitHub delays or drops scheduled runs near the top of the hour.
+    # update.py --scheduled decides whether an update is actually due (Mountain time).
+    - cron: "23,53 * * * *"
   workflow_dispatch:       # "Run workflow" button for a manual update
     inputs:
       all:
