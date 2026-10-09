@@ -15,6 +15,8 @@ https://pcha.renslip.com
   happens when due, in Mountain time: every hour from 8 AM to 11 PM Friday to Sunday,
   and once at 10 PM Monday to Thursday. Player game logs refresh on the 10 PM run.
   Downloaded data is saved back into `data/`, and the site is published to GitHub Pages.
+- Backup timer: cron-job.org calls the GitHub API every 30 minutes to start this workflow
+  with `scheduled=true`, because GitHub's own scheduler drops runs. Same schedule rules apply.
 - Manual update: Actions tab > "Update site" > Run workflow (tick the box to also refresh rosters).
 
 ## Run locally

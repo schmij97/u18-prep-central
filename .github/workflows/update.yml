@@ -11,6 +11,10 @@ on:
         description: "Also refresh rosters and game logs now"
         type: boolean
         default: false
+      scheduled:
+        description: "Follow the update schedule (used by the outside timer)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # save the downloaded data back to the repo
@@ -36,10 +40,12 @@ jobs:
       - name: Fetch data and build
         id: run
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.scheduled }}" != "true" ]; then
+            # manual "Run workflow": always update now
             python update.py ${{ inputs.all && '--all' || '' }}
             echo "ran=true" >> "$GITHUB_OUTPUT"
           else
+            # GitHub's own timer, or the outside timer (cron-job.org) with scheduled=true
             python update.py --scheduled
           fi
       - name: Save data to the repo
