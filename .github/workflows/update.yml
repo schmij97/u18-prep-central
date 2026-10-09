@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
       scheduled:
-        description: "Follow the update schedule (used by the outside timer)"
+        description: "Follow the update schedule (used by the relay)"
         type: boolean
         default: false
 
@@ -20,14 +20,16 @@ permissions:
   contents: write   # save the downloaded data back to the repo
   pages: write
   id-token: write
-
-concurrency:
-  group: update
-  cancel-in-progress: false
+  actions: write    # the relay starts the next run
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    # one update at a time (the relay job below is deliberately outside this group,
+    # so a manual "Run workflow" never waits behind a relay that's sleeping)
+    concurrency:
+      group: update
+      cancel-in-progress: false
     env:
       TZ: America/Edmonton
     outputs:
@@ -45,7 +47,7 @@ jobs:
             python update.py ${{ inputs.all && '--all' || '' }}
             echo "ran=true" >> "$GITHUB_OUTPUT"
           else
-            # GitHub's own timer, or the outside timer (cron-job.org) with scheduled=true
+            # GitHub's own timer, or the relay (scheduled=true)
             python update.py --scheduled
           fi
       - name: Save data to the repo
@@ -71,3 +73,30 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  # Relay: GitHub's own timer drops most runs for this repo, so each run waits ~28 minutes
+  # and then starts the next one itself (a workflow_dispatch from GITHUB_TOKEN is allowed).
+  # If several chains are alive (e.g. a manual run started one), only the newest continues.
+  # If the chain ever breaks, the next GitHub timer run that does fire restarts it.
+  relay:
+    needs: [update, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sleep 1680
+          me=${{ github.run_id }}
+          newer=$(gh run list --workflow update.yml --limit 20 --json databaseId,status \
+            -q "[.[] | select(.databaseId > $me and (.status==\"in_progress\" or .status==\"queued\" or .status==\"pending\" or .status==\"waiting\"))] | length")
+          if [ "$newer" != "0" ]; then
+            echo "A newer run is active ($newer); this chain stops here."
+            exit 0
+          fi
+          gh workflow run update.yml --ref main -f scheduled=true
+          echo "Next run started."
+
