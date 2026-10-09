@@ -152,6 +152,10 @@ button.team-link{background:none;border:0;padding:0;font:inherit;color:inherit;c
 button.team-link .full,button.team-link .ab{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;text-decoration-thickness:2px}
 button.team-link:hover .full,button.team-link:hover .ab{text-decoration-color:var(--accent)}
 .rec-cell{font-weight:600}
+.tag{display:inline-block;font:700 10px/1.4 var(--font-body);letter-spacing:.05em;text-transform:uppercase;padding:0 5px;border-radius:3px;margin-right:5px;vertical-align:1px;white-space:nowrap}
+.tag.live{background:#d62828;color:#fff}
+.tag.unof{background:var(--muted);color:var(--surface)}
+.st-live{color:#d62828}
 .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap}
 .badge.signed{background:var(--accent);color:var(--accent-ink)}
 .badge.committed{border:1px solid var(--accent);color:var(--accent)}
@@ -323,6 +327,12 @@ const logo = (id, cls="logo", link=true) => { const a = link ? ` data-team="${id
   return L[id] ? `<img class="${cls}${link?" logo-link":""}" src="${L[id]}" alt="${esc(tn(id))}"${a}>` : `<span class="${cls} ph${link?" logo-link":""}"${a}>${esc((T[id]||{}).abbr||"")}</span>`; };
 document.addEventListener("keydown", e => { if((e.key==="Enter"||e.key===" ") && e.target.matches(".logo-link")){ e.preventDefault(); e.target.click(); } });
 const tn = id => (T[id]||{}).name || id;
+// sc: the game has a score to show (live, unofficial or final); done: it's over (unofficial or final)
+D.games.forEach(g => { g.sc = !!g.state; g.done = g.final || g.state==="unofficial"; });
+const stTag = g => g.state==="live" ? `<span class="tag live">Live</span>` : g.state==="unofficial" ? `<span class="tag unof">Unofficial</span>` : "";
+const stText = (g, sep="/") => (g.label || (g.final?"Final":"")) + (g.done && g.suffix ? sep+g.suffix : "");
+// status line for a game: tag + "Final/OT", "Unofficial final", "In progress – 2nd 12:34", or the start time
+const stHtml = (g, sep) => g.sc ? stTag(g) + `<span class="${g.state==="live"?"st-live":""}">${esc(stText(g, sep))}</span>` : fmtTime(g.iso, g.tz);
 const ta = id => (T[id]||{}).abbr || id;
 const teamCell = (id, link=true) => { const inner = `${logo(id)}<span class="full">${esc(tn(id))}</span><span class="ab">${esc(ta(id))}</span>`;
   return link ? `<button class="team-cell team-link" data-team="${id}" title="Open ${esc(tn(id))}">${inner.replace(/ data-team="[^"]*" role="link" tabindex="0"/,"").replace(" logo-link","")}</button>` : `<span class="team-cell">${inner}</span>`; };
@@ -339,6 +349,8 @@ $("#tabs").addEventListener("click", ()=>{ navStack.length=0; });
 const playerLink = (id, name, num) => `<button class="team-link player-link" data-player="${id}"><b>${esc(name)}</b></button>${num?` <span class="sub">#${esc(num)}</span>`:""}`;
 const sgn = (v, d=2) => (v>0?"+":"") + Number(v).toFixed(d);
 const recOf = {}; D.standings.forEach(s => recOf[s.team_id] = `${s.wins}-${s.losses}-${+s.ot_losses + +s.shootout_losses}`);
+// cards count unofficial finals too, so use the power-rankings tally of finished games where there is one
+(D.rankings[Object.keys(D.rankings)[0]]||[]).forEach(r => recOf[r.team_id] = `${r.w}-${r.l}-${r.otl}`);
 const fmtDate = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-CA",{weekday:"long",month:"long",day:"numeric"});
 // game time in the rink's local time zone, e.g. "3:15 PM (PDT)"
 const fmtTime = (iso, tz) => { const o={hour:"numeric",minute:"2-digit",timeZoneName:"short"}; if(tz) o.timeZone=tz;
@@ -358,13 +370,13 @@ $("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); 
 
 /* ---------- ticker ---------- */
 const today = D.updated;
-const fin = D.games.filter(g => g.final).sort((a,b)=>a.iso<b.iso?-1:1);
-const upcoming = D.games.filter(g => !g.final).sort((a,b)=>a.iso<b.iso?-1:1);
+const fin = D.games.filter(g => g.sc).sort((a,b)=>a.iso<b.iso?-1:1);
+const upcoming = D.games.filter(g => !g.sc).sort((a,b)=>a.iso<b.iso?-1:1);
 function tkRow(id, s, win, fin){ return `<div class="tk-row tlink ${fin&&!win?"lose":""}" data-team="${id}" title="Open ${esc(tn(id))}">${logo(id,"logo",false)}<span class="ab">${esc(ta(id))}</span><span class="sc">${s}</span></div>`; }
 $("#ticker").innerHTML = [...fin, ...upcoming].map(g => {
-  const head = g.final ? `<span class="tk-head fin">Final${g.suffix?"/"+g.suffix:""} · ${esc(g.day.replace(/^\w+, /,""))}</span>`
+  const head = g.sc ? `<span class="tk-head fin">${stHtml(g)}${g.state==="live"?"":" · "+esc(g.day.replace(/^\w+, /,""))}</span>`
                        : `<span class="tk-head">${esc(g.day)} · ${fmtTime(g.iso, g.tz)}</span>`;
-  return `<div class="tk" data-date="${g.date}"><span data-game="${g.id}">${head}</span>${tkRow(g.a, g.final?g.ag:"", g.ag>g.hg, g.final)}${tkRow(g.h, g.final?g.hg:"", g.hg>g.ag, g.final)}<button class="tk-gc" data-game="${g.id}" aria-label="Game Centre: ${esc(tn(g.a))} at ${esc(tn(g.h))}">Game Centre ›</button></div>`;
+  return `<div class="tk" data-date="${g.date}"><span data-game="${g.id}">${head}</span>${tkRow(g.a, g.sc?g.ag:"", g.ag>g.hg, g.done)}${tkRow(g.h, g.sc?g.hg:"", g.hg>g.ag, g.done)}<button class="tk-gc" data-game="${g.id}" aria-label="Game Centre: ${esc(tn(g.a))} at ${esc(tn(g.h))}">Game Centre ›</button></div>`;
 }).join("");
 (function(){
   const t=$("#ticker"), prev=$("#tk-prev"), next=$("#tk-next");
@@ -390,7 +402,8 @@ const monName = m => new Date(m+"-15T12:00:00").toLocaleDateString("en-CA",{mont
 const monthOptions = () => `<option value="">All months</option>${SEASON_MONTHS.map(m=>`<option value="${m}">${monName(m)}</option>`).join("")}`;
 const teamOptions = () => `<option value="">All teams</option>${ALL_TEAMS.map(id=>`<option value="${id}">${esc(tn(id))}</option>`).join("")}`;
 // result from one team's point of view, e.g. "W 4-2" or "L 2-3 OT"
-function resultFor(g, id){ if(!g.final) return ""; const mine = g.h===id?g.hg:g.ag, theirs = g.h===id?g.ag:g.hg; const w = mine>theirs;
+function resultFor(g, id){ if(!g.sc) return ""; const mine = g.h===id?g.hg:g.ag, theirs = g.h===id?g.ag:g.hg; const w = mine>theirs;
+  if(!g.done) return `${mine}-${theirs}`;
   return `<span class="${w?"W":"L"}">${w?"W":"L"}</span> ${mine}-${theirs}${g.suffix?" "+g.suffix:""}`; }
 
 // reveal content above an element without moving what the reader is looking at
@@ -401,10 +414,10 @@ function keepPlace(el, fn){ const before = el ? el.getBoundingClientRect().top :
 
 /* ---------- scores ---------- */
 function gameCard(g, opt={}){
-  const st = (g.final ? `<span class="fin">Final${g.suffix?" / "+g.suffix:""}</span>` : `<span>${fmtTime(g.iso, g.tz)}</span>`)
-    + (opt.team && g.final ? `<span class="res">${resultFor(g, opt.team)}</span>` : "");
-  const row = (id, s, win) => `<div class="g-row ${g.final&&!win?"lose":""}"><button class="g-team team-link" data-team="${id}" title="Open ${esc(tn(id))}">${logo(id,"logo",false)}<span class="nm"><span class="u">${esc(tn(id))}</span><span class="rec">${recOf[id]||""}</span></span></button><span class="sc">${g.final?s:""}</span></div>`;
-  return `<article class="game"><div class="g-status">${opt.date ? `<span>${esc(g.day)}</span>` : ""}${st}${opt.date ? "" : `<span>#${esc(g.id)}</span>`}</div>${row(g.a,g.ag,g.ag>g.hg)}${row(g.h,g.hg,g.hg>g.ag)}<div class="g-foot"><span class="g-rink">${esc(g.venue)}${g.city?" · "+esc(g.city):""}</span><button class="gc-btn" data-game="${g.id}">${g.final?"Box score":"Preview"} ›</button></div></article>`;
+  const st = (g.sc ? `<span class="fin">${stHtml(g, " / ")}</span>` : `<span>${fmtTime(g.iso, g.tz)}</span>`)
+    + (opt.team && g.sc ? `<span class="res">${resultFor(g, opt.team)}</span>` : "");
+  const row = (id, s, win) => `<div class="g-row ${g.done&&!win?"lose":""}"><button class="g-team team-link" data-team="${id}" title="Open ${esc(tn(id))}">${logo(id,"logo",false)}<span class="nm"><span class="u">${esc(tn(id))}</span><span class="rec">${recOf[id]||""}</span></span></button><span class="sc">${g.sc?s:""}</span></div>`;
+  return `<article class="game"><div class="g-status">${opt.date ? `<span>${esc(g.day)}</span>` : ""}${st}${opt.date ? "" : `<span>#${esc(g.id)}</span>`}</div>${row(g.a,g.ag,g.ag>g.hg)}${row(g.h,g.hg,g.hg>g.ag)}<div class="g-foot"><span class="g-rink">${esc(g.venue)}${g.city?" · "+esc(g.city):""}</span><button class="gc-btn" data-game="${g.id}">${g.sc?"Box score":"Preview"} ›</button></div></article>`;
 }
 function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.date)) m.set(g.date,[]); m.get(g.date).push(g); }); return [...m]; }
 (function(){
@@ -426,7 +439,7 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
     const rec = team && recOf[team] ? `<div class="sec-head"><p><b>${esc(tn(team))}</b> <span class="sub">${recOf[team]}</span></p></div>` : "";
     const more = hidden ? `<button class="show-more" id="sc-more">Show earlier days <span class="sub">(${hidden})</span></button>` : "";
     $("#sc-body").innerHTML = rec + (days.length
-      ? more + days.slice(hidden).map(([d,gs])=>{ const done = gs.every(g=>g.final); return block([d,gs], done?"Final":"Scheduled").replace('<div class="day">', `<div class="day" data-date="${d}">`); }).join("")
+      ? more + days.slice(hidden).map(([d,gs])=>{ const lbl = gs.some(g=>g.state==="live") ? "Live" : gs.every(g=>g.final) ? "Final" : gs.every(g=>g.done) ? "Unofficial" : "Scheduled"; return block([d,gs], lbl).replace('<div class="day">', `<div class="day" data-date="${d}">`); }).join("")
       : `<div class="empty">No games match these filters.</div>`);
     const m = $("#sc-more");
     if(m) m.onclick = () => keepPlace($("#sc-body .day"), () => { expanded = true; render(); });
@@ -449,7 +462,7 @@ const PHONE = matchMedia("(max-width: 699.98px)");
   let show="", expanded=false;
   function render(){
     const team=$("#sh-team").value, mon=$("#sh-month").value;
-    const full = all.filter(g=>(!team||g.h===team||g.a===team)&&(!mon||g.date.startsWith(mon))&&(!show||(show==="up"?!g.final:g.final)));
+    const full = all.filter(g=>(!team||g.h===team||g.a===team)&&(!mon||g.date.startsWith(mon))&&(!show||(show==="up"?!g.sc:g.sc)));
     // with no month picked, start at today's games (or the next game day); earlier ones wait behind a button
     const today = new Date().toLocaleDateString("en-CA");
     let start = (!mon && show!=="fin") ? full.findIndex(g=>g.date>=today) : 0;
@@ -471,15 +484,15 @@ const PHONE = matchMedia("(max-width: 699.98px)");
     list.forEach(g=>{
       const m=g.date.slice(0,7);
       if(m!==lastMon){ rows+=`<tr class="mon"><td colspan="${cols}">${monName(m)}</td></tr>`; lastMon=m; }
-      const aw=g.final&&g.ag>g.hg, hw=g.final&&g.hg>g.ag;
+      const aw=g.done&&g.ag>g.hg, hw=g.done&&g.hg>g.ag, lt=g.done?"lose-t":"";
       // each team's goals sit right beside its name: Visitor 3  @  Home 4
-      const st = g.final ? `Final${g.suffix?"/"+g.suffix:""}` : fmtTime(g.iso,g.tz);
-      rows += `<tr class="${g.final?"past":""}" data-date="${g.date}">
+      const st = stHtml(g);
+      rows += `<tr class="${g.sc?"past":""}" data-date="${g.date}">
         <td class="l">${esc(g.day)}</td>
         <td class="l st"><button class="team-link gc-link" data-game="${g.id}">${st}</button></td>
-        <td class="l ${g.final&&!aw?"lose-t":""}">${teamCell(g.a)}</td><td class="g ${g.final&&!aw?"lose-t":""}">${g.final?g.ag:""}</td>
+        <td class="l ${!aw?lt:""}">${teamCell(g.a)}</td><td class="g ${!aw?lt:""}">${g.sc?g.ag:""}</td>
         <td class="at">@</td>
-        <td class="l ${g.final&&!hw?"lose-t":""}">${teamCell(g.h)}</td><td class="g ${g.final&&!hw?"lose-t":""}">${g.final?g.hg:""}</td>
+        <td class="l ${!hw?lt:""}">${teamCell(g.h)}</td><td class="g ${!hw?lt:""}">${g.sc?g.hg:""}</td>
         ${team?`<td class="res">${resultFor(g,team)}</td>`:""}
         <td class="l">${esc(g.venue)}${g.city?` <span class="sub">${esc(g.city)}</span>`:""}</td></tr>`;
     });
@@ -725,16 +738,17 @@ function openGame(id){
   const g = GAME_BY_ID[id]; if(!g) return;
   const stOf = tid => D.standings.find(s=>s.team_id===tid);
   const teamBlock = tid => `<div class="gc-team">${logo(tid)}<button class="team-link" data-team="${tid}">${esc(tn(tid))}</button><span class="sub">${recOf[tid]||""}${currentRank[tid]?` · Power rank #${currentRank[tid].rank}`:""}</span></div>`;
-  const status = g.final ? `Final${g.suffix?"/"+g.suffix:""}` : fmtTime(g.iso, g.tz);
-  const mid = g.final
-    ? `<div class="gc-score"><span class="${g.ag<g.hg?"lose-s":""}">${g.ag}</span><span class="dash">–</span><span class="${g.hg<g.ag?"lose-s":""}">${g.hg}</span></div><span class="gc-status">${status}</span>`
+  const status = stHtml(g);
+  const mid = g.sc
+    ? `<div class="gc-score"><span class="${g.done&&g.ag<g.hg?"lose-s":""}">${g.ag}</span><span class="dash">–</span><span class="${g.done&&g.hg<g.ag?"lose-s":""}">${g.hg}</span></div><span class="gc-status">${status}</span>`
     : `<span class="gc-status" style="font-size:22px;letter-spacing:0">${status}</span>`;
   let h = `<button class="back" id="gc-back">← Back</button>
     <div class="sec-head"><div class="grow"><span class="eyebrow">Game Centre · Game #${esc(g.id)}</span><h1>${esc(tn(g.a))} at ${esc(tn(g.h))}</h1></div></div>
     <div class="gc-hero">${teamBlock(g.a)}<div class="gc-mid">${mid}<span class="sub">${fmtDate(g.date)}</span><span class="sub">${esc(g.venue)}${g.city?" · "+esc(g.city):""}</span></div>${teamBlock(g.h)}</div>`;
-  const hasBox = g.final && HAS_BOX.has(String(id));
+  const hasBox = g.sc && HAS_BOX.has(String(id));
+  if(hasBox && !g.final) h += `<p class="note">${g.state==="live"?"Live box score, as of the last data update.":"Unofficial box score. The league hasn't finalized this game yet."}</p>`;
   if(hasBox) h += `<div id="gc-box"><p class="note">Loading box score…</p></div>`;
-  else if(g.final) h += `<p class="note">The box score for this game hasn't been downloaded yet. It comes with the next data update.</p>`;
+  else if(g.sc) h += `<p class="note">The box score for this game hasn't been downloaded yet. It comes with the next data update.</p>`;
   else h += previewHtml(g, stOf);
   $("#game").innerHTML = h;
   $("#game").dataset.gid = id;
@@ -826,7 +840,7 @@ function previewHtml(g, stOf){
   } else h += `<div class="gc-grid">`;
   // season series between the two teams
   const series = D.games.filter(x=>(x.h===g.h&&x.a===g.a)||(x.h===g.a&&x.a===g.h)).sort((x,y)=>x.iso<y.iso?-1:1);
-  h += `<div><h2 class="tbl-h" style="margin-top:0">Season series</h2><div class="tbl-wrap"><table class="sched"><tbody>${series.map(x=>`<tr class="${x.final?"past":""}"><td class="l">${esc(x.day)}</td><td class="l">${teamCell(x.a)}</td><td class="g">${x.final?x.ag:""}</td><td class="at">@</td><td class="l">${teamCell(x.h)}</td><td class="g">${x.final?x.hg:""}</td><td class="l st">${x.id===g.id?"<b>This game</b>":`<button class="team-link gc-link" data-game="${x.id}">${x.final?`Final${x.suffix?"/"+x.suffix:""}`:fmtTime(x.iso,x.tz)}</button>`}</td></tr>`).join("")}</tbody></table></div></div></div>`;
+  h += `<div><h2 class="tbl-h" style="margin-top:0">Season series</h2><div class="tbl-wrap"><table class="sched"><tbody>${series.map(x=>`<tr class="${x.sc?"past":""}"><td class="l">${esc(x.day)}</td><td class="l">${teamCell(x.a)}</td><td class="g">${x.sc?x.ag:""}</td><td class="at">@</td><td class="l">${teamCell(x.h)}</td><td class="g">${x.sc?x.hg:""}</td><td class="l st">${x.id===g.id?"<b>This game</b>":`<button class="team-link gc-link" data-game="${x.id}">${stHtml(x)}</button>`}</td></tr>`).join("")}</tbody></table></div></div></div>`;
   // top scorers for each side
   const top = tid => D.skaters.filter(p=>p.team===tid && !GO_BY_ID[p.id]).sort((x,y)=>y.pts-x.pts||y.g-x.g).slice(0,5);
   const leaders = tid => `<div><h2 class="tbl-h">${logo(tid)} ${esc(tn(tid))} leaders</h2><div class="tbl-wrap"><table><thead><tr><th class="l">Player</th><th>GP</th><th>G</th><th>A</th><th>PTS</th></tr></thead><tbody>${top(tid).map(p=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td><td>${p.gp}</td><td>${p.g}</td><td>${p.a}</td><td class="pts">${p.pts}</td></tr>`).join("") || `<tr><td class="l" colspan="5">No stats yet.</td></tr>`}</tbody></table></div></div>`;

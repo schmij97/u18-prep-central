@@ -79,8 +79,6 @@ def main(force=False):
 
     print("-- building site")
     build.main()
-    DATA.mkdir(exist_ok=True)
-    STAMP.write_text(today.isoformat())
 
 
 if __name__ == "__main__":
@@ -91,6 +89,9 @@ if __name__ == "__main__":
             open(out, "a").write("ran=false\n")
         sys.exit(0)
     main(force="--all" in sys.argv)
+    if "--scheduled" in sys.argv:   # manual runs mustn't use up the Mon-Thu 10 PM run
+        DATA.mkdir(exist_ok=True)
+        STAMP.write_text(datetime.datetime.now(LOCAL).date().isoformat())
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         open(out, "a").write("ran=true\n")

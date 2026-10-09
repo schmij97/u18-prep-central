@@ -1,7 +1,7 @@
-"""Download box scores for finished games into data/games/<game_id>.json.
+"""Download box scores for started games into data/games/<game_id>.json.
 
-Box scores don't change once a game is final, so each game is downloaded once.
-Games from the last 3 days are re-downloaded in case the league corrects a stat.
+Live and unofficial games are re-downloaded on every run until the league marks them final.
+After that, games from the last 3 days are re-downloaded in case the league corrects a stat.
 fetch.py calls this automatically; it can also be run on its own.
 """
 import json, datetime, urllib.request, urllib.parse
@@ -83,8 +83,8 @@ def main():
     GAMES.mkdir(exist_ok=True)
     sched = json.loads((DATA / "schedule.json").read_text())["SiteKit"]["Schedule"]
     cutoff = (datetime.date.today() - datetime.timedelta(days=RECHECK_DAYS)).isoformat()
-    todo = [g["game_id"] for g in sched if g["final"] == "1"
-            and (not (GAMES / f'{g["game_id"]}.json').exists() or g["date_played"] >= cutoff)]
+    todo = [g["game_id"] for g in sched if g["started"] == "1"
+            and (g["final"] != "1" or not (GAMES / f'{g["game_id"]}.json').exists() or g["date_played"] >= cutoff)]
 
     def one(gid):
         try:

@@ -48,5 +48,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-    import fetch_boxscores  # box scores for any newly finished games
+    import fetch_boxscores  # box scores for live, unofficial and newly finished games
     fetch_boxscores.main()

@@ -30,12 +30,48 @@ def teams_from(schedule):
     return t
 
 
+PERIOD = {"1": "1st", "2": "2nd", "3": "3rd", "4": "OT"}
+
+
+def unofficial(g):
+    """Game is over but the league hasn't made it official yet."""
+    return g["final"] != "1" and g["started"] == "1" and g["game_status"].strip().lower().startswith("unofficial")
+
+
+def state(g):
+    if g["final"] == "1":
+        return "final"
+    if unofficial(g):
+        return "unofficial"
+    return "live" if g["started"] == "1" else ""
+
+
+def label(g):
+    """Status text from the feed: "Final", "Unofficial final", or "In progress – 2nd 12:34"."""
+    st = state(g)
+    if st == "final":
+        return "Final"
+    if st == "unofficial":
+        return "Unofficial final"
+    if st == "live":
+        p = g.get("period") or ""
+        per = PERIOD.get(p) or ("SO" if g.get("shootout") == "1" else f"{int(p) - 3}OT" if p.isdigit() else p)
+        if g.get("intermission") == "1":
+            return f"In progress – {per} intermission".rstrip()
+        clock = re.sub(r"^00:", "", g.get("game_clock") or "").lstrip("0") or ""
+        if clock.startswith(":"):
+            clock = "0" + clock
+        return f"In progress – {per}" + (f" {clock}" if clock and clock != "0:00" else "")
+    return ""
+
+
 def finals(schedule):
+    """Games that are over (official or unofficial finals), for power rankings and records."""
     return [
         dict(home_id=g["home_team"], away_id=g["visiting_team"],
              home_goals=int(g["home_goal_count"]), away_goals=int(g["visiting_goal_count"]),
              extra=g["overtime"] == "1" or g["shootout"] == "1")
-        for g in schedule if g["final"] == "1"
+        for g in schedule if g["final"] == "1" or unofficial(g)
     ]
 
 
@@ -46,7 +82,7 @@ def game_row(g):
         "h": g["home_team"], "a": g["visiting_team"],
         "hg": int(g["home_goal_count"]), "ag": int(g["visiting_goal_count"]),
         "final": g["final"] == "1", "started": g["started"] == "1",
-        "status": g["game_status"], "suffix": suffix,
+        "status": g["game_status"], "suffix": suffix, "state": state(g), "label": label(g),
         "tz": g.get("timezone", ""), "venue": g.get("venue_name", ""), "city": g.get("venue_location", ""),
     }
 
@@ -96,13 +132,13 @@ def main():
     gpath = DATA / "gamelogs.json"
     gamelogs = json.loads(gpath.read_text()) if gpath.exists() else {"fetched": None, "skaters": {}, "goalies": {}}
 
-    # box scores, one file per finished game (fetch_boxscores.py)
+    # box scores, one file per started game (fetch_boxscores.py)
     boxscores = {}
     for f in sorted((DATA / "games").glob("*.json")) if (DATA / "games").exists() else []:
         boxscores[f.stem] = json.loads(f.read_text())
 
     core = {
-        "updated": max(g["date_played"] for g in cur if g["final"] == "1"),
+        "updated": max((g["date_played"] for g in cur if g["started"] == "1"), default=""),
         "teams": teams,
         "games": [game_row(g) for g in cur],
         "box_ids": sorted(boxscores), "rating_base": rankings.RATING_BASE,
