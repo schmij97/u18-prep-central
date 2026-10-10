@@ -74,7 +74,7 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v5
 
-  # Relay: GitHub's own timer drops most runs for this repo, so each run waits ~28 minutes
+  # Relay: GitHub's own timer drops most runs for this repo, so each run waits ~13 minutes
   # and then starts the next one itself (a workflow_dispatch from GITHUB_TOKEN is allowed).
   # If several chains are alive (e.g. a manual run started one), only the newest continues.
   # If the chain ever breaks, the next GitHub timer run that does fire restarts it.
@@ -89,7 +89,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          sleep 1680
+          sleep 780
           me=${{ github.run_id }}
           newer=$(gh run list --workflow update.yml --limit 20 --json databaseId,status \
             -q "[.[] | select(.databaseId > $me and (.status==\"in_progress\" or .status==\"queued\" or .status==\"pending\" or .status==\"waiting\"))] | length")

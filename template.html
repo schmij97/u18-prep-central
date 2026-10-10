@@ -425,7 +425,8 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
   $("#scores").innerHTML = `<div class="sec-head"><div class="grow"><span class="eyebrow">Scoreboard</span><h1>Scores</h1></div>
     <div class="controls"><select id="sc-team" aria-label="Filter scores by team">${teamOptions()}</select>
     <select id="sc-month" aria-label="Filter scores by month">${monthOptions()}</select></div></div><div id="sc-body"></div>`;
-  // every game day in date order, starting at the last game day before today ("last night");
+  // every game day in date order, starting at today's games; on a day with no games it starts
+  // at the most recent game day instead;
   // earlier days sit behind a button so the page itself never has to jump
   let expanded = false;
   function render(){
@@ -434,7 +435,11 @@ function groupByDate(list){ const m=new Map(); list.forEach(g=>{ if(!m.has(g.dat
     const days = groupByDate(D.games.filter(has).sort((x,y)=>x.iso<y.iso?-1:1));
     const today = new Date().toLocaleDateString("en-CA");
     let start = 0;
-    if(!mon){ const past = days.filter(([d])=>d<today).length; start = Math.max(0, past-1); }
+    if(!mon){
+      const past = days.filter(([d])=>d<today).length;          // game days before today
+      const hasToday = days[past] && days[past][0]===today;
+      start = hasToday ? past : Math.max(0, past-1);
+    }
     const hidden = expanded ? 0 : start;
     const rec = team && recOf[team] ? `<div class="sec-head"><p><b>${esc(tn(team))}</b> <span class="sub">${recOf[team]}</span></p></div>` : "";
     const more = hidden ? `<button class="show-more" id="sc-more">Show earlier days <span class="sub">(${hidden})</span></button>` : "";
