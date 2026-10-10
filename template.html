@@ -77,6 +77,11 @@ a.brand{text-decoration:none;color:inherit}
 a.brand:hover b{color:#fff}
 .to-top{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:30;width:46px;height:46px;border-radius:50%;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .2s,transform .2s}
 .to-top.on{opacity:1;transform:none;pointer-events:auto}
+.back-fab{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:30;height:46px;padding:0 18px 0 12px;border-radius:23px;border:0;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;gap:4px;font:800 15px var(--font-body);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .2s,transform .2s}
+.back-fab.on{opacity:1;transform:none;pointer-events:auto}
+.back-fab:hover{filter:brightness(1.08)}
+.back-fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion:reduce){.back-fab{transition:none}}
 .to-top:hover{background:var(--accent);color:var(--accent-ink)}
 .to-top svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 main{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:22px 48px}
@@ -304,6 +309,7 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   <section id="game" hidden></section>
 </main>
 <footer id="foot"></footer>
+<button class="back-fab" id="back-fab" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></button>
 <button class="to-top" id="to-top" aria-label="Back to top" title="Back to top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l7-7 7 7"/></svg></button>
 
 <script>
@@ -341,11 +347,48 @@ document.addEventListener("click", e => {
   const gm=e.target.closest("[data-game]"); if(gm){ openGame(gm.dataset.game); return; }
   const b=e.target.closest("[data-team]"); if(b){ openTeam(b.dataset.team); }
 });
+// Each step into a team / player / game page remembers where you were (which page, which
+// team or player, and how far down you'd scrolled), so Back returns to that exact spot.
+// The phone's own back gesture / browser Back button does the same.
 const navStack = [];
+let currentDetail = null;      // {view, reopen} for the team/player/game page on screen
+let restoring = false;         // true while Back is re-opening an earlier page
 const visibleView = () => TABS.find(t=>!$("#"+t).hidden) || "scores";
-function goDetail(view){ const cur=visibleView(); navStack.push(cur); show(view); document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false)); }
-function goBack(){ const to = navStack.pop() || "scores"; show(to); if(to==="team"||to==="player"||to==="game") document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false)); }
-$("#tabs").addEventListener("click", ()=>{ navStack.length=0; });
+const DETAIL = ["team","player","game"];
+function goDetail(view, reopen){
+  if(!restoring){
+    const cur = visibleView();
+    navStack.push({view: cur, y: window.scrollY, reopen: DETAIL.includes(cur) && currentDetail ? currentDetail.reopen : null});
+    history.pushState({depth: navStack.length}, "");
+  }
+  currentDetail = {view, reopen};
+  show(view);
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false));
+  updateBackFab();
+}
+function goBackNow(){
+  const e = navStack.pop();
+  if(!e){ show("scores"); updateBackFab(); return; }
+  if(e.reopen){ restoring = true; try { e.reopen(); } finally { restoring = false; } }
+  else { currentDetail = null; show(e.view); }
+  if(DETAIL.includes(e.view)) document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false));
+  // put the page back where it was (twice: once now, once after images/fonts settle)
+  const y = e.y || 0;
+  window.scrollTo(0, y); requestAnimationFrame(()=>window.scrollTo(0, y));
+  updateBackFab();
+}
+// on-screen Back buttons go through the browser history so it stays in step with the phone's back gesture
+function goBack(){ if(navStack.length) history.back(); else goBackNow(); }
+addEventListener("popstate", () => { if(navStack.length) goBackNow(); });
+// switching tabs is a step too, so Back works from every page
+function rememberHere(){
+  const cur = visibleView();
+  navStack.push({view: cur, y: window.scrollY, reopen: DETAIL.includes(cur) && currentDetail ? currentDetail.reopen : null});
+  if(navStack.length > 60) navStack.shift();
+  history.pushState({depth: navStack.length}, "");
+}
+$("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b && b.dataset.tab!==visibleView()){ rememberHere(); currentDetail=null; } }, true);
+function updateBackFab(){ const f=document.getElementById("back-fab"); if(f) f.classList.toggle("on", navStack.length>0); }
 const playerLink = (id, name, num) => `<button class="team-link player-link" data-player="${id}"><b>${esc(name)}</b></button>${num?` <span class="sub">#${esc(num)}</span>`:""}`;
 const sgn = (v, d=2) => (v>0?"+":"") + Number(v).toFixed(d);
 const recOf = {}; D.standings.forEach(s => recOf[s.team_id] = `${s.wins}-${s.losses}-${+s.ot_losses + +s.shootout_losses}`);
@@ -366,7 +409,7 @@ function show(tab){
   TABS.forEach(t => $("#"+t).hidden = t!==tab);
   window.scrollTo(0,0);
 }
-$("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b){ show(b.dataset.tab); history.replaceState(null,"","#"+b.dataset.tab); }});
+$("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b){ show(b.dataset.tab); updateBackFab(); }});
 
 /* ---------- ticker ---------- */
 const today = D.updated;
@@ -674,7 +717,7 @@ function openTeam(id){
   else $("#tm-go").innerHTML = `<p class="note">No goalie stats yet this season.</p>`;
   if(roster.length) rosterTable($("#tm-ro"), roster, false); else $("#tm-ro").innerHTML = `<p class="note">Roster not loaded yet.</p>`;
   $("#tm-back").onclick=goBack;
-  goDetail("team");
+  goDetail("team", () => openTeam(id));
 }
 
 /* ---------- player page ---------- */
@@ -707,7 +750,7 @@ function openPlayer(id){
   html += gameLogHtml(id, team, !!go || (r && r.pos==="G"));
   $("#player").innerHTML = html;
   $("#pl-back").onclick = goBack;
-  goDetail("player");
+  goDetail("player", () => openPlayer(id));
 }
 const GAME_BY_ID = {}; D.games.forEach(g=>GAME_BY_ID[g.id]=g);
 function gameLogHtml(id, team, isGoalie){
@@ -758,7 +801,7 @@ function openGame(id){
   $("#game").innerHTML = h;
   $("#game").dataset.gid = id;
   $("#gc-back").onclick = goBack;
-  goDetail("game");
+  goDetail("game", () => openGame(id));
   if(hasBox) loadBox(id).then(b => {
     const el = $("#gc-box"); if(el && $("#game").dataset.gid === String(id)) el.outerHTML = boxScoreHtml(g, b);
   }, () => {
@@ -859,7 +902,8 @@ $("#foot").innerHTML = `Data from the CSSHL league stats feed (HockeyTech), last
 (function(){ const b=$("#to-top"); const on=()=>b.classList.toggle("on", window.scrollY > window.innerHeight*0.8);
   addEventListener("scroll", on, {passive:true}); on();
   b.onclick=()=>window.scrollTo({top:0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); })();
-$("#home-link").onclick = e => { e.preventDefault(); navStack.length=0; show("scores"); history.replaceState(null,"","#scores"); };
+$("#home-link").onclick = e => { e.preventDefault(); if(visibleView()!=="scores"){ rememberHere(); } currentDetail=null; show("scores"); updateBackFab(); };
+$("#back-fab").onclick = goBack;
 show(["team","player","game"].includes(location.hash.slice(1)) ? "scores" : location.hash.slice(1));
 })();
 </script>
