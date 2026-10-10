@@ -49,7 +49,9 @@ def main():
     # keep yesterday's log for anyone whose request fails today
     path = DATA / "gamelogs.json"
     old = json.loads(path.read_text()) if path.exists() else {"skaters": {}, "goalies": {}}
-    out = {"fetched": datetime.date.today().isoformat(), "skaters": {}, "goalies": {}}
+    out = {"fetched": datetime.date.today().isoformat(),
+           "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+           "skaters": {}, "goalies": {}}
     with ThreadPoolExecutor(WORKERS) as ex:
         for (pid, rows), (_, goalie) in zip(ex.map(lambda j: one(*j), jobs), jobs):
             key = "goalies" if goalie else "skaters"

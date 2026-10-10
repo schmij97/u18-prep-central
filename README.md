@@ -12,8 +12,8 @@ https://pcha.renslip.com
   - once a week: rosters and junior rights (`fetch_rosters.py`)
   - then the page is built from `template.html` (`build.py`); power rankings come from `rankings.py`
 - GitHub Actions (`.github/workflows/update.yml`) checks twice an hour (at :23 and :53). The update only
-  happens when due, in Mountain time: every hour from 8 AM to 11 PM Friday to Sunday,
-  and once at 10 PM Monday to Thursday. Player game logs refresh on the 10 PM run.
+  happens when due, in Mountain time: from 8 AM until 1 AM that night Friday to Sunday,
+  and once at 10 PM Monday to Thursday. Player game logs refresh on the late runs (10 PM, 11 PM, and after midnight on weekends).
   Downloaded data is saved back into `data/`, and the site is published to GitHub Pages.
 - Relay: GitHub's own scheduler drops most runs, so each run waits ~13 minutes (about every 15 minutes in all) and then starts
   the next one itself (`scheduled=true`). Same schedule rules apply. If the chain breaks, the next

@@ -8,7 +8,7 @@ Each run:
 
 Production schedule (GitHub runs `update.py --scheduled` every hour; it only
 updates when due, in Mountain time):
-  Fri, Sat, Sun  every hour from 8 AM to 11 PM   (the big game days)
+  Fri, Sat, Sun  from 8 AM until 1 AM that night (the big game days; covers late BC/WA games)
   Mon - Thu      once a day at 10 PM
 Because game logs and rosters track their own last-run date, running this
 hourly never re-downloads them more than once a day / once a week.
@@ -40,12 +40,17 @@ STAMP = DATA / "last_update.txt"   # date of the last scheduled Mon-Thu update
 def due_now():
     """Scheduler gate. GitHub runs this hourly; we only update when our schedule says so
     (Mountain time, so daylight saving is handled automatically):
-      Fri-Sun: every hour from 8 AM to 11 PM
+      Fri-Sun: from 8 AM until 1 AM that night (so Sat/Sun/Mon 12:00-1:00 AM count too)
       Mon-Thu: once, at 10 PM. If GitHub runs late and the job lands at 11 PM, it still
                runs once (GitHub's hourly timer can be delayed when it's busy)."""
     now = datetime.datetime.now(LOCAL)
-    if now.weekday() >= 4:          # Fri=4, Sat=5, Sun=6
-        return 8 <= now.hour <= 23
+    wd = now.weekday()              # Mon=0 ... Fri=4, Sat=5, Sun=6
+    if wd >= 4 and now.hour >= 8:   # Fri-Sun daytime and evening
+        return True
+    if wd in (5, 6, 0) and (now.hour == 0 or (now.hour == 1 and now.minute < 5)):
+        return True                 # after midnight following a Fri/Sat/Sun game night
+    if wd >= 4:
+        return False
     if now.hour >= 22:
         last = STAMP.read_text().strip() if STAMP.exists() else ""
         return last != now.date().isoformat()
@@ -61,14 +66,21 @@ def main(force=False):
     import fetch_boxscores
     fetch_boxscores.main()
 
-    # game logs: once a day, on the 10 PM (or later) run so they include that day's games
+    # game logs: nightly, on the late runs (10 PM, 11 PM and the after-midnight run on
+    # weekends) so late games are included; at most once an hour
     gl = last_fetched("gamelogs.json")
     now = datetime.datetime.now(LOCAL)
-    if force or gl is None or (now.hour >= 22 and gl != today):
+    try:
+        gl_at = datetime.datetime.fromisoformat(json.loads((DATA / "gamelogs.json").read_text()).get("fetched_at", ""))
+    except Exception:
+        gl_at = None
+    late = now.hour >= 22 or now.hour == 0
+    stale = gl_at is None or (now - gl_at.astimezone(now.tzinfo) if gl_at.tzinfo and now.tzinfo else datetime.timedelta(hours=2)) >= datetime.timedelta(minutes=55)
+    if force or gl is None or (late and stale):
         print("-- player game logs (daily)")
         fetch_gamelogs.main()
     else:
-        print("-- game logs update on the 10 PM run, skipping")
+        print("-- game logs update on the late-night runs, skipping")
 
     ro = last_fetched("rosters.json")
     if force or ro is None or (today - ro).days >= ROSTER_EVERY_DAYS:
