@@ -368,7 +368,7 @@ function goDetail(view, reopen){
 }
 function goBackNow(){
   const e = navStack.pop();
-  if(!e){ show("scores"); updateBackFab(); return; }
+  if(!e){ currentDetail=null; show("scores"); updateBackFab(); return; }
   if(e.reopen){ restoring = true; try { e.reopen(); } finally { restoring = false; } }
   else { currentDetail = null; show(e.view); }
   if(DETAIL.includes(e.view)) document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false));
@@ -388,7 +388,9 @@ function rememberHere(){
   history.pushState({depth: navStack.length}, "");
 }
 $("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b && b.dataset.tab!==visibleView()){ rememberHere(); currentDetail=null; } }, true);
-function updateBackFab(){ const f=document.getElementById("back-fab"); if(f) f.classList.toggle("on", navStack.length>0); }
+// shown on every page; with nothing earlier to return to, Back goes to Scores (so it's only
+// hidden on Scores itself when there's nowhere to go back to)
+function updateBackFab(){ const f=document.getElementById("back-fab"); if(f) f.classList.toggle("on", navStack.length>0 || visibleView()!=="scores"); }
 const playerLink = (id, name, num) => `<button class="team-link player-link" data-player="${id}"><b>${esc(name)}</b></button>${num?` <span class="sub">#${esc(num)}</span>`:""}`;
 const sgn = (v, d=2) => (v>0?"+":"") + Number(v).toFixed(d);
 const recOf = {}; D.standings.forEach(s => recOf[s.team_id] = `${s.wins}-${s.losses}-${+s.ot_losses + +s.shootout_losses}`);
@@ -408,6 +410,7 @@ function show(tab){
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===tab));
   TABS.forEach(t => $("#"+t).hidden = t!==tab);
   window.scrollTo(0,0);
+  if(typeof updateBackFab==="function") updateBackFab();
 }
 $("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b){ show(b.dataset.tab); updateBackFab(); }});
 
