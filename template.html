@@ -363,6 +363,7 @@ function goDetail(view, reopen){
   }
   currentDetail = {view, reopen};
   show(view);
+  if(reopen && reopen.key) setAddress("#"+reopen.key);
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", false));
   updateBackFab();
 }
@@ -404,6 +405,10 @@ const fmtTime = (iso, tz) => { const o={hour:"numeric",minute:"2-digit",timeZone
   return p.filter(x=>x.type!=="timeZoneName").map(x=>x.value).join("").trim() + (z?` (${z})`:""); };
 
 /* ---------- tabs ---------- */
+// The address shows the page you're on (#standings, #team-119, #player-18948, #game-24231),
+// so refreshing reopens it and links can point straight at a team, player or game.
+const DETAIL_VIEWS = ["team","player","game"];
+function setAddress(hash){ try { if(location.hash !== hash) history.replaceState(history.state, "", hash); } catch(e){} }
 const TABS = ["scores","schedule","standings","stats","rankings","rosters","team","player","game"];
 function show(tab){
   if(!TABS.includes(tab)) tab = "scores";
@@ -411,6 +416,7 @@ function show(tab){
   TABS.forEach(t => $("#"+t).hidden = t!==tab);
   window.scrollTo(0,0);
   if(typeof updateBackFab==="function") updateBackFab();
+  if(!DETAIL_VIEWS.includes(tab)) setAddress("#"+tab);
 }
 $("#tabs").addEventListener("click", e => { const b=e.target.closest("button"); if(b){ show(b.dataset.tab); updateBackFab(); }});
 
@@ -720,7 +726,7 @@ function openTeam(id){
   else $("#tm-go").innerHTML = `<p class="note">No goalie stats yet this season.</p>`;
   if(roster.length) rosterTable($("#tm-ro"), roster, false); else $("#tm-ro").innerHTML = `<p class="note">Roster not loaded yet.</p>`;
   $("#tm-back").onclick=goBack;
-  goDetail("team", () => openTeam(id));
+  goDetail("team", Object.assign(() => openTeam(id), {key: "team-"+id}));
 }
 
 /* ---------- player page ---------- */
@@ -753,7 +759,7 @@ function openPlayer(id){
   html += gameLogHtml(id, team, !!go || (r && r.pos==="G"));
   $("#player").innerHTML = html;
   $("#pl-back").onclick = goBack;
-  goDetail("player", () => openPlayer(id));
+  goDetail("player", Object.assign(() => openPlayer(id), {key: "player-"+id}));
 }
 const GAME_BY_ID = {}; D.games.forEach(g=>GAME_BY_ID[g.id]=g);
 function gameLogHtml(id, team, isGoalie){
@@ -804,7 +810,7 @@ function openGame(id){
   $("#game").innerHTML = h;
   $("#game").dataset.gid = id;
   $("#gc-back").onclick = goBack;
-  goDetail("game", () => openGame(id));
+  goDetail("game", Object.assign(() => openGame(id), {key: "game-"+id}));
   if(hasBox) loadBox(id).then(b => {
     const el = $("#gc-box"); if(el && $("#game").dataset.gid === String(id)) el.outerHTML = boxScoreHtml(g, b);
   }, () => {
@@ -907,6 +913,21 @@ $("#foot").innerHTML = `Data from the CSSHL league stats feed (HockeyTech), last
   b.onclick=()=>window.scrollTo({top:0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); })();
 $("#home-link").onclick = e => { e.preventDefault(); if(visibleView()!=="scores"){ rememberHere(); } currentDetail=null; show("scores"); updateBackFab(); };
 $("#back-fab").onclick = goBack;
-show(["team","player","game"].includes(location.hash.slice(1)) ? "scores" : location.hash.slice(1));
+// open whatever page the address names; the plain address opens Scores
+(function(){
+  const h = decodeURIComponent(location.hash.slice(1));
+  const m = h.match(/^(team|player|game)-(.+)$/);
+  if(m){
+    show("scores");
+    const id = m[2];
+    const known = {team: () => !!T[id],
+                   player: () => !!((typeof BY_ID!=="undefined" && BY_ID[id]) || (typeof SK_BY_ID!=="undefined" && SK_BY_ID[id]) || (typeof GO_BY_ID!=="undefined" && GO_BY_ID[id])),
+                   game: () => typeof GAME_BY_ID!=="undefined" && !!GAME_BY_ID[id]}[m[1]];
+    const open = {team: openTeam, player: openPlayer, game: openGame}[m[1]];
+    if(known()) { try { open(id); } catch(e){ show("scores"); } }
+    if(DETAIL_VIEWS.includes(visibleView())) return;   // opened fine
+  }
+  show(TABS.includes(h) && !DETAIL_VIEWS.includes(h) ? h : "scores");
+})();
 })();
 </script>
