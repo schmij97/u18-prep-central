@@ -274,14 +274,30 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   .sched-cards .cards{grid-template-columns:minmax(0,1fr);gap:10px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* refresh: "Updated X min ago" in the masthead, refresh button at the end of the sticky tab bar */
+.navbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center}
+.navbar-inner nav.tabs{margin:0;flex:1;min-width:0;max-width:none}
+.upd{font-size:12px;color:var(--mast-muted);white-space:nowrap}
+.upd.new{color:var(--mast-ink);font-weight:700}
+.refresh-btn{position:relative;flex:0 0 auto;width:40px;height:40px;margin-right:max(10px,env(safe-area-inset-right,0px));border:0;border-radius:50%;background:none;color:var(--mast-muted);display:grid;place-items:center;cursor:pointer}
+.refresh-btn:hover{color:var(--mast-ink);background:var(--mast-line)}
+.refresh-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.refresh-btn.spin svg{animation:rf-spin .8s linear infinite}
+@keyframes rf-spin{to{transform:rotate(360deg)}}
+.refresh-btn.new{color:var(--mast-ink)}
+.refresh-btn.new::after{content:"";position:absolute;top:7px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--mast)}
+.rf-toast{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translate(-50%,-8px);z-index:40;background:var(--ink);color:var(--bg);font:700 13px var(--font-body);padding:8px 14px;border-radius:18px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.rf-toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.refresh-btn.spin svg{animation-duration:2s}}
 </style>
 
 <header class="mast">
   <div class="mast-inner">
     <a class="brand" href="#scores" id="home-link" title="Home"><b><i></i> U18 Prep Central</b><span>CSSHL · 2026–27</span></a>
+    <span class="upd" id="upd" aria-live="polite"></span>
   </div>
 </header>
-<div class="navbar" id="navbar">
+<div class="navbar" id="navbar"><div class="navbar-inner">
   <nav class="tabs" role="tablist" id="tabs">
     <button role="tab" data-tab="scores" aria-selected="true">Scores</button>
     <button role="tab" data-tab="schedule" aria-selected="false">Schedule</button>
@@ -290,7 +306,9 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
     <button role="tab" data-tab="rankings" aria-selected="false">Power Rankings</button>
     <button role="tab" data-tab="rosters" aria-selected="false">Rosters</button>
   </nav>
-</div>
+  <button class="refresh-btn" id="refresh-btn" aria-label="Refresh" title="Get the latest update"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20 4v5h-5"/></svg></button>
+</div></div>
+<div class="rf-toast" id="rf-toast" role="status"></div>
 <div class="ticker" aria-label="Recent and upcoming games"><div class="ticker-shell">
   <button class="tk-nav" id="tk-prev" aria-label="Earlier games"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
   <div class="ticker-inner" id="ticker"></div>
@@ -314,7 +332,10 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
 
 <script>
 // data lives in data/*.json (built by build.py); ?v= hashes make new data show up right away
-const FILES = /*__FILES__*/null;
+let FILES = /*__FILES__*/null;
+// after the refresh button finds a newer update it reloads with those file versions,
+// so a cached copy of the page can't hold you on old data
+try { const p = JSON.parse(sessionStorage.getItem("u18-files")||"null"); if(p && p.built && (!FILES.built || p.built > FILES.built)) FILES = p; } catch(e){}
 const getJSON = (path, v) => fetch(`data/${path}?v=${v}`).then(r => { if(!r.ok) throw new Error(`${r.status} ${path}`); return r.json(); });
 (async () => {
 document.querySelector("#scores").innerHTML = `<p class="note">Loading…</p>`;
@@ -913,6 +934,53 @@ $("#foot").innerHTML = `Data from the CSSHL league stats feed (HockeyTech), last
   b.onclick=()=>window.scrollTo({top:0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); })();
 $("#home-link").onclick = e => { e.preventDefault(); if(visibleView()!=="scores"){ rememberHere(); } currentDetail=null; show("scores"); updateBackFab(); };
 $("#back-fab").onclick = goBack;
+/* ---------- refresh ---------- */
+// The site updates on a schedule (about every 15 min on game days). The button asks for
+// data/version.json past any cache: if the data changed it reloads in place (same page,
+// same scroll spot); if not it says you're up to date. It also checks quietly in the
+// background and puts a dot on the button when a newer update is out.
+(function(){
+  const btn = $("#refresh-btn"), upd = $("#upd"), toast = $("#rf-toast");
+  const DATA_KEYS = ["core","logos","rosters","gamelogs","box"];
+  let newer = null, toastT;
+  const ago = iso => { if(!iso) return ""; const m = Math.round((Date.now() - new Date(iso)) / 60000);
+    if(m < 1) return "just now"; if(m < 60) return `${m} min ago`; const h = Math.floor(m/60); if(h < 24) return `${h} hr ago`;
+    return new Date(iso).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}); };
+  function paint(){
+    if(newer){ upd.textContent = "New update — tap ⟳"; upd.classList.add("new"); btn.classList.add("new"); btn.title = "New update available — tap to load it"; }
+    else { const a = ago(FILES.built); upd.textContent = a ? `Updated ${a}` : ""; upd.classList.remove("new"); btn.classList.remove("new"); btn.title = a ? `Updated ${a} — tap to check for newer` : "Check for an update"; }
+  }
+  function say(msg){ toast.textContent = msg; toast.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(()=>toast.classList.remove("on"), 2200); }
+  async function latest(){
+    const r = await fetch(`data/version.json?t=${Date.now()}`, {cache:"no-store"});
+    if(!r.ok) throw new Error(r.status); return r.json();
+  }
+  const changed = v => DATA_KEYS.some(k => v[k] !== FILES[k]);
+  async function check(){
+    try { const v = await latest();
+      if(changed(v)) newer = v; else if(v.built && v.built !== FILES.built){ FILES.built = v.built; }
+    } catch(e){}
+    paint();
+  }
+  function reloadWith(v){
+    try { sessionStorage.setItem("u18-files", JSON.stringify(v)); sessionStorage.setItem("u18-y", String(Math.round(scrollY))); sessionStorage.setItem("u18-y-hash", location.hash); } catch(e){}
+    location.reload();
+  }
+  btn.onclick = async () => {
+    if(btn.classList.contains("spin")) return;
+    btn.classList.add("spin");
+    try { const v = newer || await latest();
+      if(changed(v)) { say("Loading the latest update…"); reloadWith(v); return; }
+      if(v.built) FILES.built = v.built;
+      paint(); say(`Up to date · updated ${ago(FILES.built)}`);
+    } catch(e){ say("Couldn't check — are you online?"); }
+    setTimeout(()=>btn.classList.remove("spin"), 400);
+  };
+  paint();
+  setInterval(paint, 30000);
+  setInterval(()=>{ if(!document.hidden && !newer) check(); }, 3*60000);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !newer) check(); });
+})();
 // open whatever page the address names; the plain address opens Scores
 (function(){
   const h = decodeURIComponent(location.hash.slice(1));
@@ -929,5 +997,11 @@ $("#back-fab").onclick = goBack;
   }
   show(TABS.includes(h) && !DETAIL_VIEWS.includes(h) ? h : "scores");
 })();
+// back to the same scroll spot after the refresh button reloads the page
+(function(){ try {
+  const y = sessionStorage.getItem("u18-y"), h = sessionStorage.getItem("u18-y-hash");
+  sessionStorage.removeItem("u18-y"); sessionStorage.removeItem("u18-y-hash");
+  if(y !== null && h === location.hash){ const go = () => window.scrollTo(0, +y); go(); requestAnimationFrame(go); setTimeout(go, 250); }
+} catch(e){} })();
 })();
 </script>

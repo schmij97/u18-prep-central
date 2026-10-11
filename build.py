@@ -3,7 +3,7 @@
 The page loads core/logos/rosters/gamelogs at startup and fetches a game's box score
 (site/data/box/<id>.json) only when that game is opened. File hashes go into the page as
 ?v= query strings so phones pick up new data as soon as it's published."""
-import hashlib, json, pathlib, re, shutil
+import datetime, hashlib, json, pathlib, re, shutil
 import rankings
 
 ROOT = pathlib.Path(__file__).parent
@@ -165,6 +165,9 @@ def main():
         (od / "box" / f"{gid}.json").write_text(text)
         box_hash.update(gid.encode() + text.encode())
     files["box"] = box_hash.hexdigest()[:10]
+    # when this update ran; the page's refresh button compares against data/version.json
+    files["built"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    (od / "version.json").write_text(dump(files))
 
     html = (ROOT / "template.html").read_text(encoding="utf-8").replace("/*__FILES__*/null", dump(files))
     (out / "index.html").write_text(html, encoding="utf-8")
