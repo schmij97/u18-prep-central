@@ -289,6 +289,15 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
 .rf-toast{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translate(-50%,-8px);z-index:40;background:var(--ink);color:var(--bg);font:700 13px var(--font-body);padding:8px 14px;border-radius:18px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 .rf-toast.on{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){.refresh-btn.spin svg{animation-duration:2s}}
+/* frozen header copy (see stickyHead) */
+.sticky-head{position:sticky;top:var(--nav-h,45px);z-index:6;height:0}
+.sh-in{overflow-x:auto;scrollbar-width:none;margin:1px 1px 0;border-radius:7px 7px 0 0;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.sh-in::-webkit-scrollbar{display:none}
+.sh-tbl{table-layout:fixed}
+.sh-tbl th:not(.fz){position:static}
+.sh-tbl th{box-shadow:inset 0 -1px 0 var(--line)}
+.sh-tbl th.sorted{box-shadow:inset 0 -2px 0 var(--accent)}
+.sh-tbl th{overflow:hidden;text-overflow:clip}
 </style>
 
 <header class="mast">
@@ -584,16 +593,49 @@ const PHONE = matchMedia("(max-width: 699.98px)");
   render();
 })();
 
+/* ---------- frozen table headers ---------- */
+// A copy of the header row rides just under the tab bar while you scroll down a table.
+// It sits exactly over the real header, follows the table's sideways scroll, and sorting
+// works from it too. Column widths are copied from the real table whenever it resizes.
+const navH = () => document.documentElement.style.setProperty("--nav-h", ($("#navbar").offsetHeight||45) + "px");
+navH(); addEventListener("resize", navH);
+const headRO = typeof ResizeObserver!=="undefined" ? new ResizeObserver(es => es.forEach(e => e.target._fit && e.target._fit())) : null;
+function stickyHead(el, wrap){
+  const real = wrap.querySelector("table"), thead = real.querySelector("thead");
+  const sh = document.createElement("div"); sh.className = "sticky-head"; sh.setAttribute("aria-hidden","true");
+  sh.innerHTML = `<div class="sh-in"><table class="${real.className} sh-tbl">${thead.outerHTML}</table></div>`;
+  el.insertBefore(sh, wrap);
+  const inner = sh.firstChild, copy = inner.querySelector("table");
+  real._fit = () => {
+    const w = real.getBoundingClientRect().width; if(!w) return;
+    copy.style.width = w + "px";
+    const a = thead.querySelectorAll("th"), b = copy.querySelectorAll("th");
+    a.forEach((th,i) => { const x = th.getBoundingClientRect().width + "px"; b[i].style.width = b[i].style.minWidth = b[i].style.maxWidth = x; });
+    inner.style.width = wrap.clientWidth + "px";
+    inner.scrollLeft = wrap.scrollLeft;
+  };
+  let lock = false;
+  wrap.addEventListener("scroll", () => { if(lock) return; lock = true; inner.scrollLeft = wrap.scrollLeft; requestAnimationFrame(()=>lock=false); }, {passive:true});
+  inner.addEventListener("scroll", () => { if(lock) return; lock = true; wrap.scrollLeft = inner.scrollLeft; requestAnimationFrame(()=>lock=false); }, {passive:true});
+  real._fit();
+  if(headRO) headRO.observe(real);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(real._fit);
+}
+
 /* ---------- sortable table helper ---------- */
 function sortTable(el, cols, rows, state, rowHtml){
   // phones: freeze the name column (the first left-aligned one) and the rank column right before it
   const ni = cols.findIndex(c=>c.l), pre = ni===1;
   const extra = cols.map((c,i)=>[c.cls, pre&&i===0&&"fz fz-rk", i===ni&&`fz fz-end${pre?" fz2":""}`].filter(Boolean).join(" "));
   const draw = () => {
+    // keep the sideways scroll spot when re-sorting, so the column you tapped stays in view
+    const oldWrap = el.querySelector(".tbl-wrap"), keepX = oldWrap ? oldWrap.scrollLeft : 0;
     const c = cols.find(c=>c.k===state.k);
     const sorted = rows.slice().sort((a,b)=>{ const va=c.v?c.v(a):a[c.k], vb=c.v?c.v(b):b[c.k]; return (va<vb?-1:va>vb?1:0)*(state.asc?1:-1); });
     el.innerHTML = `<div class="tbl-wrap"><table class="fzd"><thead><tr>${cols.map((c,i)=>`<th class="${c.l?"l":""} ${c.s===false?"":"sortable"} ${c.k===state.k?"sorted":""} ${extra[i]}" data-k="${c.k}" title="${esc(c.t||"")}">${c.h}</th>`).join("")}</tr></thead><tbody>${sorted.map((r,i)=>rowHtml(r,i,state.k)).join("")}</tbody></table></div>`;
     el.querySelectorAll("tbody tr").forEach(tr => { const tds = tr.children; for(let i=0;i<tds.length;i++) if(extra[i]) tds[i].className += " "+extra[i]; });
+    const wrap = el.querySelector(".tbl-wrap"); wrap.scrollLeft = keepX;
+    stickyHead(el, wrap);
   };
   el.onclick = e => {
     const th=e.target.closest("th.sortable"); if(!th) return; const k=th.dataset.k; const c=cols.find(c=>c.k===k);
@@ -739,8 +781,8 @@ function openTeam(id){
     <h2 class="tbl-h">Skaters</h2><div id="tm-sk"></div>
     <h2 class="tbl-h">Goalies</h2><div id="tm-go"></div>
     <h2 class="tbl-h">Roster</h2><div id="tm-ro"></div>`;
-  const skCols=[{k:"name",h:"Player",l:true,asc:true},{k:"pos",h:"Pos",asc:true},{k:"gp",h:"GP"},{k:"g",h:"G"},{k:"a",h:"A"},{k:"pts",h:"PTS"},{k:"pmg",h:"P/GP"},{k:"ppg",h:"PPG",t:"Power-play goals"},{k:"gwg",h:"GWG",t:"Game-winning goals"},{k:"pim",h:"PIM"}];
-  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}</tr>`);
+  const skCols=[{k:"name",h:"Player",l:true,asc:true},{k:"pos",h:"Pos",asc:true},{k:"gp",h:"GP"},{k:"g",h:"G"},{k:"a",h:"A"},{k:"pts",h:"PTS"},{k:"pmg",h:"P/GP"},{k:"ppg",h:"PPG",t:"Power-play goals"},{k:"gwg",h:"GWG",t:"Game-winning goals"},{k:"pim",h:"PIM"},{k:"born",h:"Born",asc:true}];
+  if(sk.length) sortTable($("#tm-sk"), skCols, sk, {k:"pts",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name,p.num)}</td>${cell("pos",k,p.pos)}${cell("gp",k,p.gp)}${cell("g",k,p.g)}${cell("a",k,p.a)}${cell("pts",k,p.pts,"pts")}${cell("pmg",k,p.pmg.toFixed(2))}${cell("ppg",k,p.ppg)}${cell("gwg",k,p.gwg)}${cell("pim",k,p.pim)}${cell("born",k,esc(p.born))}</tr>`);
   else $("#tm-sk").innerHTML = `<p class="note">No skater stats yet this season.</p>`;
   const goCols=[{k:"name",h:"Goalie",l:true,asc:true},{k:"gp",h:"GP"},{k:"w",h:"W"},{k:"l",h:"L"},{k:"otl",h:"OTL"},{k:"sv",h:"SV%"},{k:"gaa",h:"GAA",asc:true},{k:"saves",h:"SV"},{k:"so",h:"SO"},{k:"min",h:"MIN"}];
   if(go.length) sortTable($("#tm-go"), goCols, go, {k:"gp",asc:false}, (p,i,k)=>`<tr><td class="l">${playerLink(p.id,p.name)}</td>${cell("gp",k,p.gp)}${cell("w",k,p.w)}${cell("l",k,p.l)}${cell("otl",k,p.otl)}${cell("sv",k,p.sv.toFixed(3).replace(/^0/,""))}${cell("gaa",k,p.gaa.toFixed(2))}${cell("saves",k,p.saves)}${cell("so",k,p.so)}${cell("min",k,p.min)}</tr>`);
