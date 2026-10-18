@@ -832,7 +832,10 @@ function gameLogHtml(id, team, isGoalie){
   if(!log || !log.length) return h + `<p class="note">${GL.fetched?"No games logged yet.":"Game logs haven't been downloaded yet."}</p>`;
   const rows = log.slice().sort((a,b)=>a.date<b.date?1:-1);
   const opp = r => `<span class="sub">${r.home?"vs":"@"}</span> ${teamCell(r.opp)}`;
-  const res = r => { const g=GAME_BY_ID[r.gid]; return g ? resultFor(g, team) || resultFor(g, g.h===r.opp?g.a:g.h) : ""; };
+  // games added from the box score (since the nightly download) show Live / Unofficial while they are
+  const res = r => { const g=GAME_BY_ID[r.gid]; if(!g) return ""; const me = g.h===r.opp?g.a:g.h;
+    const tag = g.state==="live"||g.state==="unofficial" ? stTag(g)+" " : "";
+    return tag + resultFor(g, me) + (g.state==="live" && g.label ? ` <span class="sub st-live">${esc(g.label.replace(/^In progress\s*[–-]\s*/,""))}</span>` : ""); };
   const day = d => new Date(d+"T12:00:00").toLocaleDateString("en-CA",{month:"short",day:"numeric"});
   if(isGoalie){
     h += `<div class="tbl-wrap"><table><thead><tr><th class="l">Date</th><th class="l">Opponent</th><th>Result</th><th>Dec</th><th>SA</th><th>GA</th><th>SV</th><th>SV%</th><th>SO</th><th>MIN</th></tr></thead><tbody>`
@@ -845,7 +848,7 @@ function gameLogHtml(id, team, isGoalie){
       + `<tr class="cut"><td class="l" colspan="3"><b>Totals · ${rows.length} GP</b></td><td><b>${tot("g")}</b></td><td><b>${tot("a")}</b></td><td class="pts">${tot("pts")}</td><td><b>${tot("ppg")}</b></td><td><b>${tot("shg")}</b></td><td><b>${tot("gwg")}</b></td><td><b>${tot("pim")}</b></td></tr>`
       + `</tbody></table></div>`;
   }
-  return h + (when ? `<p class="note">Game logs updated daily, last on ${when}.</p>` : "");
+  return h + (when ? `<p class="note">Game logs update every night (last on ${when}); today's games are filled in from the box score every 15 minutes while they're on.</p>` : "");
 }
 /* ---------- Game Centre ---------- */
 // box scores are fetched one game at a time, when the game is opened

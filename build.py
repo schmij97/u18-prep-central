@@ -87,6 +87,45 @@ def game_row(g):
     }
 
 
+def add_box_games(gamelogs, boxscores, schedule):
+    """Game logs download once a night, so fill in any started game a player's log doesn't
+    have yet (live, unofficial, or finished since last night) from that game's box score,
+    which refreshes every run. The next nightly download replaces these with the league's rows."""
+    import copy
+    gl = copy.deepcopy(gamelogs)
+    gl.setdefault("skaters", {}); gl.setdefault("goalies", {})
+    for g in schedule:
+        b = boxscores.get(g["game_id"])
+        if g["started"] != "1" or not b:
+            continue
+        gid, date, final = g["game_id"], g["date_played"], g["final"] == "1"
+        for side, other in (("home", "away"), ("away", "home")):
+            t = b.get(side) or {}
+            opp, home = (b.get(other) or {}).get("id"), side == "home"
+            mine = [x for x in b.get("goals") or [] if x.get("team") == t.get("id")]
+            for p in t.get("skaters") or []:
+                log = gl["skaters"].setdefault(p["id"], [])
+                if any(r["gid"] == gid for r in log):
+                    continue
+                own = [x for x in mine if (x.get("by") or {}).get("id") == p["id"]]
+                log.append({"gid": gid, "date": date, "home": home, "opp": opp, "box": True,
+                            "g": p["g"], "a": p["a"], "pts": p["pts"],
+                            "ppg": sum(x["pp"] for x in own), "shg": sum(x["sh"] for x in own),
+                            "gwg": sum(x["gwg"] for x in own) if final else 0, "pim": p["pim"]})
+            for p in t.get("goalies") or []:
+                log = gl["goalies"].setdefault(p["id"], [])
+                if any(r["gid"] == gid for r in log):
+                    continue
+                sa, sv = p.get("sa") or 0, p.get("sv") or 0
+                dec = {"SOL": "OTL"}.get(p.get("res") or "", p.get("res") or "") if final else ""
+                log.append({"gid": gid, "date": date, "home": home, "opp": opp, "box": True,
+                            "dec": dec, "sa": sa, "ga": p.get("ga") or 0, "sv": sv,
+                            "svpct": round(sv / sa, 3) if sa else 0.0,
+                            "so": final and sa > 0 and not p.get("ga") and len(t.get("goalies")) == 1,
+                            "min": p.get("toi") or ""})
+    return gl
+
+
 def main():
     cur = load("schedule.json", "Schedule")
     prev = load("schedule_2526.json", "Schedule")
@@ -136,6 +175,8 @@ def main():
     boxscores = {}
     for f in sorted((DATA / "games").glob("*.json")) if (DATA / "games").exists() else []:
         boxscores[f.stem] = json.loads(f.read_text())
+
+    gamelogs = add_box_games(gamelogs, boxscores, cur)
 
     core = {
         "updated": max((g["date_played"] for g in cur if g["started"] == "1"), default=""),
