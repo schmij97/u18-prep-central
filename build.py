@@ -87,6 +87,70 @@ def game_row(g):
     }
 
 
+def add_live_totals(skaters, goalies, boxscores, schedule, rosters):
+    """The league's season totals only count a game once it's official. Add games that are
+    live or awaiting sign-off (final != 1) from their box scores, so the Stats tab moves during
+    games. The schedule and totals come from the same run, so a game is never counted twice:
+    once it turns official the league's totals include it and it's no longer added here.
+    Game-winning goals wait for the official totals. Edits the lists in place."""
+    roster = {p["id"]: p for p in rosters.get("players") or []}
+    sk_by = {p["id"]: p for p in skaters}
+    go_by = {p["id"]: p for p in goalies}
+    added = []
+
+    def mins(toi):
+        try:
+            m, sec = (toi or "0:0").split(":"); return int(m) + int(sec) / 60
+        except Exception:
+            return 0
+
+    for g in schedule:
+        b = boxscores.get(g["game_id"])
+        if g["started"] != "1" or g["final"] == "1" or not b:
+            continue
+        over = state(g) == "unofficial"
+        added.append(g["game_id"])
+        for side in ("home", "away"):
+            t = b.get(side) or {}
+            tid = t.get("id")
+            mine = [x for x in b.get("goals") or [] if x.get("team") == tid]
+            for x in t.get("skaters") or []:
+                p = sk_by.get(x["id"])
+                if not p:
+                    r = roster.get(x["id"]) or {}
+                    p = {"id": x["id"], "name": x["name"], "num": x.get("num") or r.get("num", ""),
+                         "pos": x.get("pos") or r.get("pos", ""), "team": tid, "gp": 0, "g": 0, "a": 0, "pts": 0,
+                         "ppg": 0, "gwg": 0, "pim": 0, "pmg": 0.0,
+                         "born": "'" + r["dob"][2:4] if r.get("dob") else "", "home": r.get("home", "")}
+                    skaters.append(p); sk_by[p["id"]] = p
+                p["gp"] += 1; p["g"] += x["g"]; p["a"] += x["a"]; p["pts"] += x["pts"]; p["pim"] += x["pim"]
+                p["ppg"] += sum(1 for y in mine if (y.get("by") or {}).get("id") == x["id"] and y.get("pp"))
+                p["pmg"] = round(p["pts"] / p["gp"], 2) if p["gp"] else 0.0
+                p["live"] = p.get("live", 0) + 1
+            gl = t.get("goalies") or []
+            for x in gl:
+                p = go_by.get(x["id"])
+                if not p:
+                    p = {"id": x["id"], "name": x["name"], "team": tid, "gp": 0, "w": 0, "l": 0, "otl": 0,
+                         "sv": 0.0, "gaa": 0.0, "so": 0, "saves": 0, "min": 0}
+                    goalies.append(p); go_by[p["id"]] = p
+                ga_before = round(p["gaa"] * p["min"] / 60)
+                p["gp"] += 1; p["saves"] += x.get("sv") or 0
+                p["min"] = int(round(p["min"] + mins(x.get("toi"))))
+                ga = ga_before + (x.get("ga") or 0)
+                sa = p["saves"] + ga
+                p["sv"] = round(p["saves"] / sa, 3) if sa else 0.0
+                p["gaa"] = round(ga * 60 / p["min"], 2) if p["min"] else 0.0
+                if over:
+                    res = x.get("res") or ""
+                    if res == "W": p["w"] += 1
+                    elif res == "L": p["l"] += 1
+                    elif res in ("OTL", "SOL"): p["otl"] += 1
+                    if len(gl) == 1 and not x.get("ga") and x.get("sa"): p["so"] += 1
+                p["live"] = p.get("live", 0) + 1
+    return added
+
+
 def add_box_games(gamelogs, boxscores, schedule):
     """Game logs download once a night, so fill in any started game a player's log doesn't
     have yet (live, unofficial, or finished since last night) from that game's box score,
@@ -177,13 +241,14 @@ def main():
         boxscores[f.stem] = json.loads(f.read_text())
 
     gamelogs = add_box_games(gamelogs, boxscores, cur)
+    live_ids = add_live_totals(skaters, goalies, boxscores, cur, rosters)
 
     core = {
         "updated": max((g["date_played"] for g in cur if g["started"] == "1"), default=""),
         "teams": teams,
         "games": [game_row(g) for g in cur],
         "box_ids": sorted(boxscores), "rating_base": rankings.RATING_BASE,
-        "standings": standings, "skaters": skaters, "goalies": goalies,
+        "standings": standings, "skaters": skaters, "goalies": goalies, "live_games": live_ids,
         "rankings": {"2026-27": rnd(rk_cur), "2025-26": rnd(rk_prev)},
     }
 
