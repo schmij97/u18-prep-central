@@ -929,8 +929,8 @@ function boxScoreHtml(g, b){
     if(x.per!==last){ rows += `<tr class="per"><td colspan="4">${esc(x.per)} period</td></tr>`; last=x.per; }
     if(x.team===g.a) sa++; else sh++;
     const tags = [x.pp&&"PP", x.sh&&"SH", x.en&&"EN", x.ps&&"PS"].filter(Boolean).map(t=>`<span class="tag">${t}</span>`).join("") + (x.gwg?`<span class="tag gw">GWG</span>`:"");
-    const who = x.by ? `${playerLink(x.by.id, x.by.name)} <span class="sub">(${esc(x.n)})</span>${tags}` : "Unknown";
-    const ast = x.ast.length ? x.ast.map(a=>`<button class="team-link player-link" data-player="${a.id}">${esc(a.name)}</button>`).join(", ") : "Unassisted";
+    const who = x.by ? `${playerLink(x.by.id, x.by.name, x.by.num)} <span class="sub">(${esc(x.n)})</span>${tags}` : "Unknown";
+    const ast = x.ast.length ? x.ast.map(a=>`<button class="team-link player-link" data-player="${a.id}">${esc(a.name)}</button>${a.num?` <span class="sub">#${esc(a.num)}</span>`:""}`).join(", ") : "Unassisted";
     rows += `<tr><td class="l">${esc(x.time)}</td><td class="l">${logo(x.team)}</td><td class="l"><div class="who"><span>${who}</span><span class="ast">${ast}</span></div></td><td><b>${sa}–${sh}</b></td></tr>`;
   });
   if(!b.goals.length) rows = `<tr><td colspan="4" class="l">No goals.</td></tr>`;
@@ -938,7 +938,7 @@ function boxScoreHtml(g, b){
 
   // shootout
   if(b.so && b.shootout){
-    const soRows = side => (b.shootout[side]||[]).map(x=>`<tr><td class="l">${playerLink(x.by.id,x.by.name)}</td><td><span class="so-mark ${x.goal?"y":"n"}">${x.goal?"Goal":"Miss"}</span>${x.win?`<span class="tag gw">Winner</span>`:""}</td></tr>`).join("");
+    const soRows = side => (b.shootout[side]||[]).map(x=>`<tr><td class="l">${playerLink(x.by.id,x.by.name,x.by.num)}</td><td><span class="so-mark ${x.goal?"y":"n"}">${x.goal?"Goal":"Miss"}</span>${x.win?`<span class="tag gw">Winner</span>`:""}</td></tr>`).join("");
     h += `<h2 class="tbl-h">Shootout</h2><div class="gc-grid">${[["away",g.a],["home",g.h]].map(([s,t])=>`<div><div class="tbl-wrap"><table class="plays"><thead><tr><th class="l">${teamCell(t)}</th><th></th></tr></thead><tbody>${soRows(s)}</tbody></table></div></div>`).join("")}</div>`;
   }
 
@@ -946,7 +946,7 @@ function boxScoreHtml(g, b){
   last=""; rows="";
   b.pens.forEach(x=>{
     if(x.per!==last){ rows += `<tr class="per"><td colspan="5">${esc(x.per)} period</td></tr>`; last=x.per; }
-    rows += `<tr><td class="l">${esc(x.time)}</td><td class="l">${logo(x.team)}</td><td class="l">${x.bench?"Bench":x.by?playerLink(x.by.id,x.by.name):""}</td><td class="l">${esc(x.desc)}</td><td>${esc(x.min)} min</td></tr>`;
+    rows += `<tr><td class="l">${esc(x.time)}</td><td class="l">${logo(x.team)}</td><td class="l">${x.bench?"Bench":x.by?playerLink(x.by.id,x.by.name,x.by.num):""}</td><td class="l">${esc(x.desc)}</td><td>${esc(x.min)} min</td></tr>`;
   });
   h += `<h2 class="tbl-h">Penalties</h2>` + (b.pens.length ? `<div class="tbl-wrap"><table class="plays"><thead><tr><th class="l">Time</th><th class="l"></th><th class="l">Player</th><th class="l">Infraction</th><th>PIM</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="note">No penalties.</p>`);
 
@@ -954,8 +954,8 @@ function boxScoreHtml(g, b){
   const sideBox = (t, tid) => {
     const sk = t.skaters.slice().sort((x,y)=>y.pts-x.pts||y.g-x.g||(+x.num||99)-(+y.num||99));
     return `<div><h2 class="tbl-h">${logo(tid)} ${esc(tn(tid))}</h2>
-      <div class="tbl-wrap compact"><table class="fzd"><thead><tr><th class="x">#</th><th class="l fz fz-end">Skater</th><th class="x">Pos</th><th>G</th><th>A</th><th>PTS</th><th>PIM</th></tr></thead><tbody>${sk.map(p=>`<tr><td class="rk x">${esc(p.num)}</td><td class="l fz fz-end">${playerLink(p.id,p.name)}</td><td class="x">${esc(p.pos)}</td><td>${p.g}</td><td>${p.a}</td><td class="pts">${p.pts}</td><td>${p.pim}</td></tr>`).join("")}</tbody></table></div>
-      <div class="tbl-wrap compact" style="margin-top:10px"><table class="fzd"><thead><tr><th class="x">#</th><th class="l fz fz-end">Goalie</th><th class="x">TOI</th><th>SA</th><th>GA</th><th class="x">SV</th><th>SV%</th><th>Dec</th></tr></thead><tbody>${t.goalies.map(p=>`<tr><td class="rk x">${esc(p.num)}</td><td class="l fz fz-end">${playerLink(p.id,p.name)}</td><td class="x">${esc(p.toi)}</td><td>${p.sa}</td><td>${p.ga}</td><td class="x">${p.sv}</td><td>${p.sa?(p.sv/p.sa).toFixed(3).replace(/^0/,""):"—"}</td><td>${esc(p.res)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="tbl-wrap compact"><table class="fzd"><thead><tr><th class="l fz fz-end">Skater</th><th class="x">Pos</th><th>G</th><th>A</th><th>PTS</th><th>PIM</th></tr></thead><tbody>${sk.map(p=>`<tr><td class="l fz fz-end">${playerLink(p.id,p.name,p.num)}</td><td class="x">${esc(p.pos)}</td><td>${p.g}</td><td>${p.a}</td><td class="pts">${p.pts}</td><td>${p.pim}</td></tr>`).join("")}</tbody></table></div>
+      <div class="tbl-wrap compact" style="margin-top:10px"><table class="fzd"><thead><tr><th class="l fz fz-end">Goalie</th><th class="x">TOI</th><th>SA</th><th>GA</th><th class="x">SV</th><th>SV%</th><th>Dec</th></tr></thead><tbody>${t.goalies.map(p=>`<tr><td class="l fz fz-end">${playerLink(p.id,p.name,p.num)}</td><td class="x">${esc(p.toi)}</td><td>${p.sa}</td><td>${p.ga}</td><td class="x">${p.sv}</td><td>${p.sa?(p.sv/p.sa).toFixed(3).replace(/^0/,""):"—"}</td><td>${esc(p.res)}</td></tr>`).join("")}</tbody></table></div>
       ${t.coach?`<p class="note">Head coach: ${esc(t.coach)}</p>`:""}</div>`;
   };
   h += `<div class="gc-grid">${sideBox(A, g.a)}${sideBox(H, g.h)}</div>`;
