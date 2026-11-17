@@ -255,13 +255,11 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
   .game{grid-template-columns:minmax(0,1fr)}
   .team-cell .full{display:none}.team-cell .ab{display:inline}
   .compact .x{display:none}
-  .fz,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{position:sticky;left:0;z-index:1}
-  td.fz,.tbl-wrap table:not(.fzd):not(.plays) td:first-child{background:var(--surface)}
-  tbody tr:hover td.fz,.tbl-wrap table:not(.fzd):not(.plays) tbody tr:hover td:first-child,td.fz.sorted{background:var(--surface-2)}
-  th.fz,.tbl-wrap table:not(.fzd):not(.plays) th:first-child{z-index:2}
-  .fz-rk{width:38px;min-width:38px;max-width:38px;padding-inline:6px}
-  .fz2{left:38px}
-  .fz-end,.tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{box-shadow:inset -1px 0 0 var(--line)}
+  .tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{position:sticky;left:0;z-index:1}
+  .tbl-wrap table:not(.fzd):not(.plays) td:first-child{background:var(--surface)}
+  .tbl-wrap table:not(.fzd):not(.plays) tbody tr:hover td:first-child{background:var(--surface-2)}
+  .tbl-wrap table:not(.fzd):not(.plays) th:first-child{z-index:2}
+  .tbl-wrap table:not(.fzd):not(.plays) tr > :first-child{box-shadow:inset -1px 0 0 var(--line)}
   td.fz{max-width:150px;white-space:normal}
   .rights-td{white-space:normal;min-width:220px}
   .compact th,.compact td{padding-inline:5px}
@@ -300,6 +298,29 @@ footer{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 32px;c
 .sh-tbl th{overflow:hidden;text-overflow:clip}
 .with-usual{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .usual{font-size:12px;font-weight:600;white-space:nowrap}
+/* frozen # and name columns (all screen sizes): they stay put while the table slides sideways */
+.fz{position:sticky;left:0;z-index:1}
+td.fz{background:var(--surface)}
+tbody tr:hover td.fz,td.fz.sorted{background:var(--surface-2)}
+th.fz{z-index:2}
+.fz-rk{width:38px;min-width:38px;max-width:38px;padding-inline:6px}
+.fz2{left:38px}
+.fz-end{box-shadow:inset -1px 0 0 var(--line)}
+/* PC: ‹ › buttons beside a table that's wider than the screen; they ride down the page with you */
+.hs-arrows{position:sticky;top:50vh;height:0;z-index:7;pointer-events:none}
+.hs-btn{position:absolute;top:0;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.18);display:grid;place-items:center;cursor:pointer;pointer-events:auto;font-size:22px;line-height:1;transition:opacity .15s}
+.hs-btn:hover{background:var(--surface-2)}
+.hs-btn[hidden]{display:none}
+.hs-btn.prev{left:-50px}.hs-btn.next{right:-50px}
+@media (max-width:1299.98px){.hs-btn.prev{left:auto;right:46px}.hs-btn.next{right:4px}}
+@media (hover:none),(max-width:699.98px){.hs-arrows{display:none}}
+/* PC: Standings fits without sliding sideways */
+@media (min-width:700px){
+  #st-t th,#st-t td{padding-inline:6px}
+  #st-t table{font-size:13.5px}
+  #rosters .rights-td{white-space:normal;min-width:290px}
+  #rosters th,#rosters td{padding-inline:7px}
+}
 </style>
 
 <header class="mast">
@@ -616,9 +637,21 @@ function stickyHead(el, wrap){
     inner.style.width = wrap.clientWidth + "px";
     inner.scrollLeft = wrap.scrollLeft;
   };
-  let lock = false;
-  wrap.addEventListener("scroll", () => { if(lock) return; lock = true; inner.scrollLeft = wrap.scrollLeft; requestAnimationFrame(()=>lock=false); }, {passive:true});
-  inner.addEventListener("scroll", () => { if(lock) return; lock = true; wrap.scrollLeft = inner.scrollLeft; requestAnimationFrame(()=>lock=false); }, {passive:true});
+  // keep the two in step; ignore the echo of our own update (it would stop a smooth slide)
+  let setInner = -1, setWrap = -1;
+  wrap.addEventListener("scroll", () => { if(Math.abs(wrap.scrollLeft - setWrap) < 1) return; setWrap = -1; setInner = wrap.scrollLeft; inner.scrollLeft = setInner; }, {passive:true});
+  inner.addEventListener("scroll", () => { if(Math.abs(inner.scrollLeft - setInner) < 1) return; setInner = -1; setWrap = inner.scrollLeft; wrap.scrollLeft = setWrap; }, {passive:true});
+  // ‹ › buttons (PC): show only the ones that can move the table
+  const ar = document.createElement("div"); ar.className = "hs-arrows";
+  ar.innerHTML = `<button class="hs-btn prev" aria-label="Scroll table left" hidden>‹</button><button class="hs-btn next" aria-label="Scroll table right" hidden>›</button>`;
+  el.insertBefore(ar, wrap);
+  const [prev, next] = ar.querySelectorAll("button");
+  const step = d => wrap.scrollBy({left: d * Math.max(200, wrap.clientWidth * 0.6), behavior: "smooth"});
+  prev.onclick = () => step(-1); next.onclick = () => step(1);
+  const arrows = () => { const max = wrap.scrollWidth - wrap.clientWidth;
+    prev.hidden = !(max > 2 && wrap.scrollLeft > 2); next.hidden = !(max > 2 && wrap.scrollLeft < max - 2); };
+  wrap.addEventListener("scroll", arrows, {passive:true});
+  const fit0 = real._fit; real._fit = () => { fit0(); arrows(); };
   real._fit();
   if(headRO) headRO.observe(real);
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(real._fit);
